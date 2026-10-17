@@ -43,6 +43,13 @@ on:
         description: "Tempo máximo do job do agente."
         type: number
         default: 45
+      runner:
+        description: >-
+          Onde roda o job do AGENTE, em JSON (ex.: '"ubuntu-latest"' ou '["self-hosted","bancada-pr"]').
+          Só o runner isolado efêmero (bancada-pr) ou o do GitHub; nunca um runner privilegiado.
+          O job que publica o PR (token com escrita) roda sempre no GitHub.
+        type: string
+        default: '"ubuntu-latest"'
       base_branch:
         description: "Branch-base do PR. Vazio = branch padrão do repositório."
         type: string
@@ -82,7 +89,7 @@ jobs:
       startsWith(github.event.label.name, 'agente:') &&
       contains(github.event.issue.labels.*.name, 'ficha') &&
       github.event.sender.login == inputs.maintainer
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
     permissions:
       contents: read

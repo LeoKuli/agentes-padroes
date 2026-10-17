@@ -49,9 +49,15 @@ def test_job_so_roda_com_as_travas():
     assert "inputs.timeout_minutes" in str(job["timeout-minutes"])
 
 
-def test_todos_os_jobs_rodam_so_em_ubuntu_latest():
-    for nome, job in _wf()["jobs"].items():
-        assert job["runs-on"] == "ubuntu-latest", nome
+def test_so_o_agente_escolhe_o_runner_e_o_padrao_e_o_github():
+    wf = _wf()
+    for nome, job in wf["jobs"].items():
+        if nome == "agente":
+            assert job["runs-on"] == "${{ fromJSON(inputs.runner) }}"
+        else:  # publicar/avisar têm token com escrita: sempre no GitHub, nunca na bancada
+            assert job["runs-on"] == "ubuntu-latest", nome
+    entrada = _gatilho(wf)["workflow_call"]["inputs"]["runner"]
+    assert json.loads(entrada["default"]) == "ubuntu-latest"
 
 
 def test_quem_roda_o_agente_nao_escreve_e_quem_escreve_nao_roda_o_agente():
