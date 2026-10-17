@@ -1,0 +1,43 @@
+name: ficha
+
+# Workflow reutilizável: reprova o PR cuja descrição não tem uma linha "Ficha: <ID>".
+# Uso no repositório que chama:
+#   on:
+#     pull_request:
+#       types: [opened, edited, synchronize, reopened]
+#   jobs:
+#     ficha:
+#       uses: LeoKuli/agentes-padroes/.github/workflows/ficha.yml@main
+#
+# Aceita "Ficha: #123" (número da Issue-ficha; o formato preferido) ou "Ficha: SIGLA-NNN"
+# (ex.: MKT-012, CRM-045). Mude o padrão pela entrada `pattern`.
+
+on:
+  workflow_call:
+    inputs:
+      pattern:
+        description: "Expressão regular (ERE) do ID da ficha"
+        type: string
+        default: "#[0-9]+|[A-Z][A-Z0-9]*-[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  ficha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Conferir a linha "Ficha:" na descrição do PR
+        env:
+          # Via env, nunca interpolado no script: a descrição é texto não confiável.
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PATTERN: ${{ inputs.pattern }}
+        run: |
+          set -euo pipefail
+          if printf '%s\n' "$PR_BODY" | tr -d '\r' | grep -Eq "^Ficha:[[:space:]]*(${PATTERN})[[:space:]]*$"; then
+            echo "OK: a descrição cita uma ficha de tarefa."
+            exit 0
+          fi
+          echo "::error::A descrição do PR precisa ter uma linha exatamente no formato 'Ficha: #<número da Issue>' (ex.: 'Ficha: #123') ou 'Ficha: <ID>' (ex.: 'Ficha: MKT-012'). Um PR por ficha de tarefa."
+          exit 1

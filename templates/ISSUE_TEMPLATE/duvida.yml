@@ -1,0 +1,39 @@
+name: Dúvida sobre uma ficha
+description: Pergunta de um agente sobre uma ficha, antes ou durante o trabalho.
+title: "[DÚVIDA] "
+labels: ["duvida"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Pergunte aqui só quando a ficha estiver ambígua ou parecer errada. Não adivinhe e não amplie o
+        escopo por conta própria. Se a dúvida é sobre uma ficha específica, cite o número dela.
+  - type: input
+    id: ficha
+    attributes:
+      label: Ficha
+      description: Número da Issue-ficha a que a dúvida se refere.
+      placeholder: "#123"
+    validations:
+      required: true
+  - type: textarea
+    id: pergunta
+    attributes:
+      label: Pergunta
+      description: Uma pergunta objetiva, que se responda com sim, não ou uma escolha.
+    validations:
+      required: true
+  - type: textarea
+    id: ja_tentei
+    attributes:
+      label: O que já li e tentei
+      description: Arquivos lidos e a interpretação que você considera mais provável.
+    validations:
+      required: false
+  - type: input
+    id: modelo
+    attributes:
+      label: Modelo
+      description: Modelo e ferramenta que você usa (serve para medir por modelo).
+    validations:
+      required: false

@@ -1,0 +1,126 @@
+name: Ficha de tarefa
+description: Tarefa autocontida para um agente executar em um PR (a Issue é a ficha).
+title: "[FICHA] "
+labels: ["ficha", "estado:pronta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Uma ficha = uma Issue = um PR (feito de um fork). O verificador de escopo lê **Arquivos permitidos**
+        e **Tamanho máximo do diff** deste formulário; não renomeie os campos.
+        Os rótulos `ficha`, `estado:pronta` e `nivel-N` precisam existir no repositório
+        (rode `scripts/aplicar-labels.sh` do `LeoKuli/agentes-padroes`); rótulo inexistente é ignorado em silêncio.
+  - type: input
+    id: spec
+    attributes:
+      label: Spec
+      description: Caminho da spec e a seção/FR que esta ficha cumpre.
+      placeholder: "specs/001-nome/spec.md, FR-003"
+    validations:
+      required: false
+  - type: dropdown
+    id: nivel
+    attributes:
+      label: Nível
+      description: "1 simples, 2 média, 3 difícil, 4 arquitetura. Depois de criar, aplique também o rótulo `nivel-N`."
+      options:
+        - "1 - simples"
+        - "2 - média"
+        - "3 - difícil"
+        - "4 - arquitetura"
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: modelo_minimo
+    attributes:
+      label: Modelo mínimo
+      description: Modelo mais fraco que pode pegar esta ficha.
+      placeholder: "ex.: Sonnet, DeepSeek V3 ou equivalente"
+    validations:
+      required: false
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      description: 1 a 3 frases. O que muda no comportamento do sistema quando a ficha estiver pronta.
+    validations:
+      required: true
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto e links
+      description: Caminhos de arquivo, seções de spec, ADRs e lições. Só o necessário.
+      placeholder: |
+        - Spec:
+        - Código relacionado:
+        - Lição/ADR:
+    validations:
+      required: false
+  - type: textarea
+    id: permitidos
+    attributes:
+      label: Arquivos permitidos
+      description: "UMA glob por linha (ex.: src/regra/**). Tudo que não casar é proibido. Caminho sem barra só vale na raiz."
+      placeholder: |
+        src/regra/**
+        tests/regra/**
+    validations:
+      required: true
+  - type: textarea
+    id: proibidos
+    attributes:
+      label: Arquivos proibidos
+      description: "Além dos protegidos pelo CI (.github/**, CODEOWNERS, AGENTS.md, constitution.md): constituição, testes de arquitetura, pisos, limiares de mutação, .env*."
+    validations:
+      required: false
+  - type: textarea
+    id: teste
+    attributes:
+      label: Teste que deve nascer e controle positivo
+      description: Nome do arquivo e do caso. Tem de EXECUTAR o código real. Diga qual caso é o controle positivo (o que prova que o teste enxerga o defeito).
+    validations:
+      required: false
+  - type: textarea
+    id: mutacao
+    attributes:
+      label: Mutação que tem de morrer
+      description: A alteração no código que o teste precisa detectar e QUAL asserção deve reprová-la.
+    validations:
+      required: false
+  - type: textarea
+    id: aceite
+    attributes:
+      label: Comando de aceite
+      description: Comando exato, o mesmo "pronto" do AGENTS.md.
+      render: bash
+    validations:
+      required: true
+  - type: checkboxes
+    id: criterio
+    attributes:
+      label: Critério de pronto
+      description: O revisor confere cada item no PR.
+      options:
+        - label: O comando de aceite passa (local e no CI)
+        - label: O teste novo existe, executa código real e tem controle positivo
+        - label: A mutação indicada morre na asserção indicada
+        - label: Só arquivos permitidos foram tocados e o diff está dentro do máximo
+        - label: Nenhum teste existente foi enfraquecido, pulado ou apagado
+        - label: Sem credencial, telefone, CPF, e-mail ou dado de paciente em arquivo, commit ou PR
+        - label: 'O PR traz "Ficha: #<número desta Issue>" e o template preenchido'
+  - type: input
+    id: tamanho
+    attributes:
+      label: Tamanho máximo do diff (linhas)
+      description: "Número de linhas alteradas (adições + remoções) que o PR pode ter. Estourou? Pare e relate no PR."
+      value: "300"
+    validations:
+      required: true
+  - type: textarea
+    id: fora_do_escopo
+    attributes:
+      label: Fora do escopo
+      description: O que NÃO fazer, mesmo que pareça melhorar. Ideias novas viram nova ficha.
+    validations:
+      required: false

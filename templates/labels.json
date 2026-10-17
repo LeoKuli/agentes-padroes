@@ -1,0 +1,23 @@
+{
+  "labels": [
+    {"name": "ficha", "color": "0E8A16", "description": "Ficha de tarefa: a Issue é a tarefa; o PR vem de um fork"},
+    {"name": "duvida", "color": "D876E3", "description": "Pergunta sobre uma ficha; sem resposta, o agente não adivinha"},
+    {"name": "estado:pronta", "color": "C2E0C6", "description": "Ficha pronta para ser pega por um agente"},
+    {"name": "estado:em-andamento", "color": "FBCA04", "description": "Um agente pegou a ficha e está trabalhando"},
+    {"name": "estado:revisao", "color": "1D76DB", "description": "PR aberto, aguardando revisão"},
+    {"name": "estado:corrigir", "color": "E99695", "description": "Revisão pediu até 3 correções; agente corrige no mesmo PR"},
+    {"name": "estado:devolvida", "color": "B60205", "description": "PR devolvido: refazer a ficha ou subir de nível"},
+    {"name": "nivel-1", "color": "BFDADC", "description": "Simples: ajuste localizado, qualquer modelo"},
+    {"name": "nivel-2", "color": "7FC4C9", "description": "Média: 2 a 4 arquivos, com teste"},
+    {"name": "nivel-3", "color": "2B8A92", "description": "Difícil: fluxo crítico, dados ou integração; modelo forte"},
+    {"name": "nivel-4", "color": "0B4F55", "description": "Arquitetura: só modelo forte, com revisão do dono"},
+    {"name": "prioridade:alta", "color": "D93F0B", "description": "Pegar antes das demais fichas prontas"}
+  ],
+  "sob_demanda": {
+    "agente:<modelo>": {
+      "color": "5319E7",
+      "description": "Agente/modelo que pegou a ficha ou abriu o PR (ex.: agente:sonnet, agente:deepseek)"
+    }
+  },
+  "nota": "Rótulos agente:<modelo> são criados sob demanda: ./scripts/aplicar-labels.sh LeoKuli/repo agente:sonnet agente:deepseek"
+}

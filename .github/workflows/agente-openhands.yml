@@ -1,0 +1,349 @@
+name: agente-openhands
+
+# Workflow reutilizável: um agente externo (OpenHands SDK, qualquer LLM) trabalha DENTRO do
+# GitHub Actions, disparado por um rótulo `agente:<modelo>` numa Issue-ficha, sem conta de
+# colaborador. Abre um PR que NÃO roda o CI sozinho: o mantenedor revisa o diff e fecha/reabre
+# o PR para disparar o CI.
+#
+# Por que não existe "o resolver do OpenHands" aqui: o workflow reutilizável antigo
+# (openhands-resolver.yml, módulo openhands.resolver) foi REMOVIDO do upstream em 2026-04-23
+# (OpenHands/OpenHands#14062). O caminho atual são os workflows de exemplo do SDK V1
+# (OpenHands/software-agent-sdk, examples/03_github_workflows). Este arquivo é a versão da casa:
+# fixa o SDK em uma versão, e separa o agente (sem permissão de escrita) de quem abre o PR.
+# Detalhes, fontes e como configurar: docs/OPENHANDS.md.
+#
+# Uso no repositório que chama: copie templates/agente-openhands-caller.yml para
+# .github/workflows/agente.yml.
+#
+# Garantias duras:
+#   - só roda em `issues: labeled`, com a Issue rotulada `ficha`, rótulo novo `agente:<sufixo>`,
+#     e quem aplicou o rótulo == `maintainer`. Qualquer outro caso: o job é pulado.
+#   - credenciais só por `secrets:`; nunca vão para `env` de passo que não precise delas.
+#   - o job do agente tem só `contents: read` e nenhum token de escrita; quem faz push e abre o PR
+#     é outro job, em outra máquina, que só recebe um patch (texto) e o valida.
+#   - usa o GITHUB_TOKEN (não PAT): PR criado por ele não dispara workflows e não pode alterar
+#     .github/workflows. Mudanças em .github/ também são descartadas do patch.
+
+on:
+  workflow_call:
+    inputs:
+      maintainer:
+        description: "Login de quem pode disparar o agente (quem aplica o rótulo)."
+        type: string
+        default: "LeoKuli"
+      modelos:
+        description: 'JSON {"sufixo-do-rótulo": "id-do-modelo-no-LiteLLM"}. Sufixo desconhecido falha.'
+        type: string
+        default: '{"deepseek":"openrouter/deepseek/deepseek-chat","qwen":"openrouter/qwen/qwen3-coder"}'
+      max_iterations:
+        description: "Máximo de iterações do agente por execução."
+        type: number
+        default: 50
+      timeout_minutes:
+        description: "Tempo máximo do job do agente."
+        type: number
+        default: 45
+      base_branch:
+        description: "Branch-base do PR. Vazio = branch padrão do repositório."
+        type: string
+        default: ""
+      autores_ficha:
+        description: "author_association aceitas para quem abriu a ficha (separadas por vírgula)."
+        type: string
+        default: "OWNER,MEMBER,COLLABORATOR"
+      sdk_version:
+        description: "Versão exata do openhands-sdk e do openhands-tools (PyPI)."
+        type: string
+        default: "1.54.0"
+    secrets:
+      LLM_API_KEY:
+        description: "Chave do provedor do modelo, COM teto de gasto. Criada pelo dono, nunca por um agente."
+        required: true
+      LLM_BASE_URL:
+        description: "Opcional: endpoint do provedor (ex.: https://openrouter.ai/api/v1)."
+        required: false
+      PADROES_TOKEN:
+        description: "Opcional: leitura do repositório LeoKuli/agentes-padroes (se o GITHUB_TOKEN não alcançá-lo)."
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agente-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # ------------------------------------------------------------------ 1. o agente
+  agente:
+    if: >-
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      startsWith(github.event.label.name, 'agente:') &&
+      contains(github.event.issue.labels.*.name, 'ficha') &&
+      github.event.sender.login == inputs.maintainer
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    outputs:
+      tem_mudancas: ${{ steps.patch.outputs.tem_mudancas }}
+      base_sha: ${{ steps.base.outputs.sha }}
+      sufixo: ${{ steps.modelo.outputs.sufixo }}
+      modelo: ${{ steps.modelo.outputs.modelo }}
+      numero: ${{ steps.modelo.outputs.numero }}
+    steps:
+      - name: Baixar os scripts do padroes
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          ref: ${{ github.job_workflow_sha || 'main' }}
+          path: _padroes
+          token: ${{ secrets.PADROES_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Conferir as travas e escolher o modelo pelo rótulo
+        id: modelo
+        env:
+          MAINTAINER: ${{ inputs.maintainer }}
+          MODELOS: ${{ inputs.modelos }}
+          AUTORES_FICHA: ${{ inputs.autores_ficha }}
+        run: python3 _padroes/scripts/agente_openhands.py modelo
+
+      - name: Baixar o repositório (sem credencial gravada)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: base
+          ref: ${{ inputs.base_branch || github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Registrar a base e montar o prompt a partir da ficha
+        id: base
+        run: |
+          set -euo pipefail
+          echo "sha=$(git -C base rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          PROMPT_FILE="$GITHUB_WORKSPACE/prompt.txt" python3 _padroes/scripts/agente_openhands.py prompt
+
+      - name: Copiar o código para uma pasta SEM .git (o agente não enxerga o repositório)
+        run: |
+          set -euo pipefail
+          rsync -a --exclude='.git' base/ work/
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar o OpenHands SDK (versão fixa)
+        env:
+          SDK_VERSION: ${{ inputs.sdk_version }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$SDK_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::sdk_version precisa ser exata (ex.: 1.54.0); recebi '$SDK_VERSION'."
+            exit 1
+          fi
+          python -m pip install --quiet "openhands-sdk==${SDK_VERSION}" "openhands-tools==${SDK_VERSION}"
+
+      - name: Rodar o agente
+        working-directory: work
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ steps.modelo.outputs.modelo }}
+          MAX_ITERATIONS: ${{ inputs.max_iterations }}
+          PROMPT_FILE: ${{ github.workspace }}/prompt.txt
+          OPENHANDS_SUPPRESS_BANNER: "1"
+          PYTHONPATH: ""
+        run: |
+          set -o pipefail
+          python "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" rodar 2>&1 | tee "$GITHUB_WORKSPACE/agente.log"
+
+      - name: Baixar uma cópia limpa para gerar o patch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: patchrepo
+          ref: ${{ steps.base.outputs.sha }}
+          persist-credentials: false
+
+      - name: Gerar o patch (texto) com o que o agente mudou
+        id: patch
+        run: |
+          set -euo pipefail
+          rsync -a --delete --exclude='.git' work/ patchrepo/
+          cd patchrepo
+          git -c core.hooksPath=/dev/null add -A
+          if git diff --cached --quiet; then
+            echo "O agente não alterou nenhum arquivo."
+            echo "tem_mudancas=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-ext-diff > "$GITHUB_WORKSPACE/agente.patch"
+          git -c core.hooksPath=/dev/null diff --cached --stat | tail -n 20
+          tamanho=$(wc -c < "$GITHUB_WORKSPACE/agente.patch")
+          if [ "$tamanho" -gt 1048576 ]; then
+            echo "::error::O patch do agente tem $tamanho bytes (limite 1 MiB). Não vai para PR; reduza a ficha."
+            exit 1
+          fi
+          echo "tem_mudancas=true" >> "$GITHUB_OUTPUT"
+
+      - name: Guardar o patch
+        if: steps.patch.outputs.tem_mudancas == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: agente-patch
+          path: agente.patch
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Guardar o log do agente
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: agente-log
+          path: agente.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ------------------------------------------------------------------ 2. o PR (outra máquina)
+  publicar:
+    needs: agente
+    if: needs.agente.outputs.tem_mudancas == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Baixar os scripts do padroes
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          ref: ${{ github.job_workflow_sha || 'main' }}
+          path: _padroes
+          token: ${{ secrets.PADROES_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Baixar o repositório na base usada pelo agente
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: repo
+          ref: ${{ needs.agente.outputs.base_sha }}
+
+      - name: Baixar o patch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: agente-patch
+
+      - name: Aplicar o patch sem tocar em .github/ e commitar
+        id: aplicar
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          patch="$GITHUB_WORKSPACE/agente.patch"
+          tamanho=$(wc -c < "$patch")
+          if [ "$tamanho" -gt 1048576 ]; then
+            echo "::error::Patch com $tamanho bytes (limite 1 MiB)."
+            exit 1
+          fi
+          # Arquivos que o agente tentou mudar em .github/ (só para avisar; o descarte é o --exclude).
+          git apply --numstat "$patch" | cut -f3 | grep -E '^(\.github/|"?\.github/)' > "$GITHUB_WORKSPACE/excluidos.txt" || true
+          git apply --index --exclude='.github/*' --exclude='.git/*' "$patch"
+          if git diff --cached --quiet; then
+            echo "Depois de descartar .github/, não sobrou nada."
+            echo "vazio=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "vazio=false" >> "$GITHUB_OUTPUT"
+          git diff --cached --stat | tail -n 20
+
+      - name: Avisar que só havia mudança em .github/ (descartada)
+        if: steps.aplicar.outputs.vazio == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMERO: ${{ needs.agente.outputs.numero }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$NUMERO" --body "O agente só mexeu em .github/, que a automação descarta. Nenhum PR foi aberto. Veja: ${RUN_URL}"
+
+      - name: Commitar, empurrar a branch e abrir o PR
+        if: steps.aplicar.outputs.vazio == 'false'
+        working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMERO: ${{ needs.agente.outputs.numero }}
+          SUFIXO: ${{ needs.agente.outputs.sufixo }}
+          MODELO: ${{ needs.agente.outputs.modelo }}
+          BASE_BRANCH: ${{ inputs.base_branch || github.event.repository.default_branch }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          branch="agente/ficha-${NUMERO}-${SUFIXO}-${RUN_ID}"
+          EXCLUIDOS="$(cat "$GITHUB_WORKSPACE/excluidos.txt" 2>/dev/null || true)"
+          export EXCLUIDOS
+
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "chore: cumpre a ficha #${NUMERO} (agente:${SUFIXO})"
+          git push origin "HEAD:refs/heads/${branch}"
+
+          python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" pr-corpo > "$RUNNER_TEMP/pr-corpo.md"
+          python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" pr-comentario > "$RUNNER_TEMP/pr-comentario.md"
+
+          titulo="$(printf '%s' "$ISSUE_TITLE" | tr -d '\r\n' | sed -E 's/^\[FICHA\][[:space:]]*//' | cut -c1-120)"
+          if ! url="$(gh pr create --base "$BASE_BRANCH" --head "$branch" \
+                --title "[agente:${SUFIXO}] ${titulo}" --body-file "$RUNNER_TEMP/pr-corpo.md" 2>"$RUNNER_TEMP/pr-erro.txt")"; then
+            cat "$RUNNER_TEMP/pr-erro.txt"
+            echo "::error::Não consegui abrir o PR. A branch '${branch}' foi empurrada. Se o erro fala em 'not permitted to create or approve pull requests', o dono precisa ligar Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests' neste repositório (docs/OPENHANDS.md); depois abra o PR da branch na mão."
+            exit 1
+          fi
+          echo "PR: $url"
+
+          # Rótulos: criar se faltarem (sem --force: não sobrescreve cor/descrição existentes).
+          gh label create "agente:${SUFIXO}" --color 5319E7 --description "Agente/modelo que pegou a ficha ou abriu o PR" 2>/dev/null || true
+          gh label create "estado:revisao" --color 1D76DB --description "PR aberto, aguardando revisão" 2>/dev/null || true
+          gh pr edit "$url" --add-label "agente:${SUFIXO}" --add-label "estado:revisao"
+          gh pr comment "$url" --body-file "$RUNNER_TEMP/pr-comentario.md"
+
+          # A ficha acompanha o estado.
+          gh issue edit "$NUMERO" --add-label "estado:revisao" || true
+          gh issue edit "$NUMERO" --remove-label "estado:pronta" 2>/dev/null || true
+          gh issue edit "$NUMERO" --remove-label "estado:em-andamento" 2>/dev/null || true
+          gh issue comment "$NUMERO" --body "PR aberto por agente (modelo ${MODELO}): ${url}. O CI não roda sozinho; o mantenedor revisa o diff e fecha/reabre o PR."
+
+  # ------------------------------------------------------------------ 3. aviso quando não deu PR
+  avisar:
+    needs: [agente, publicar]
+    if: >-
+      always() &&
+      needs.agente.result != 'skipped' &&
+      (needs.agente.result != 'success' ||
+       needs.agente.outputs.tem_mudancas != 'true' ||
+       needs.publicar.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Comentar na ficha por que não saiu PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMERO: ${{ github.event.issue.number }}
+          AGENTE: ${{ needs.agente.result }}
+          TEM: ${{ needs.agente.outputs.tem_mudancas }}
+          PUBLICAR: ${{ needs.publicar.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$AGENTE" != "success" ]; then
+            msg="O agente falhou ou foi interrompido (resultado: ${AGENTE}); nenhum PR foi aberto. Veja o log: ${RUN_URL}"
+          elif [ "$TEM" != "true" ]; then
+            msg="O agente terminou sem alterar nenhum arquivo (ficha ambígua, impossível ou já cumprida?). Nenhum PR foi aberto. O log do agente está nos artefatos da execução: ${RUN_URL}"
+          else
+            msg="O agente produziu mudanças, mas o PR não foi aberto (resultado da publicação: ${PUBLICAR}). Veja: ${RUN_URL}"
+          fi
+          gh issue comment "$NUMERO" --body "$msg"

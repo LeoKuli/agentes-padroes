@@ -1,0 +1,89 @@
+# Varredura de segredo e de dado pessoal. Modelo de LeoKuli/agentes-padroes, derivado do .gitleaks.toml
+# do repositório marketing. Regras padrão do gitleaks + regras próprias abaixo.
+# Recomendado: toda regra própria com uma amostra positiva que o CI confere (controle positivo).
+
+title = "padroes (modelo)"
+minVersion = "v8.30.0"
+
+[extend]
+useDefault = true
+
+# ---------- Segredos ----------
+
+[[rules]]
+id = "meta-access-token"
+description = "Token de acesso da Meta (Graph API), formatos EAA e EAG (usuário de sistema, 2026) e vizinhos"
+regex = '''\bEA[A-Z][A-Za-z0-9]{60,}'''
+tags = ["segredo", "meta"]
+
+[[rules]]
+id = "google-oauth-access-token"
+description = "Token de acesso OAuth do Google"
+regex = '''ya29\.[0-9A-Za-z_-]{20,}'''
+keywords = ["ya29."]
+tags = ["segredo", "google"]
+
+[[rules]]
+id = "google-oauth-refresh-token"
+description = "Refresh token OAuth do Google"
+regex = '''\b1//0[0-9A-Za-z_-]{30,}'''
+keywords = ["1//0"]
+tags = ["segredo", "google"]
+
+[[rules]]
+id = "google-oauth-client-secret"
+description = "Client secret de cliente OAuth do Google"
+regex = '''\bGOCSPX-[0-9A-Za-z_-]{28}\b'''
+keywords = ["gocspx-"]
+tags = ["segredo", "google"]
+
+# ---------- Dado pessoal ----------
+
+[[rules]]
+id = "cpf"
+description = "CPF com máscara, ou sem máscara precedido da palavra CPF"
+regex = '''\b\d{3}\.\d{3}\.\d{3}[-/]\d{2}\b|\b(?i:cpf)\W{0,3}\d{3}[.\s]?\d{3}[.\s]?\d{3}[-/.\s]?\d{2}\b'''
+tags = ["dado-pessoal", "cpf"]
+
+[[rules]]
+id = "telefone-mascarado"
+description = "Telefone brasileiro com separador (celular ou fixo, com ou sem DDD entre parênteses)"
+regex = '''(?:\+?55[\s.-]?)?(?:\(\s?0?[1-9]{2}\s?\)|\b0?[1-9]{2})[\s.-]?(?:9\d{4}|[2-5]\d{3})[\s.-]\d{4}\b'''
+tags = ["dado-pessoal", "telefone"]
+
+[[rules]]
+id = "telefone-e164"
+description = "Telefone brasileiro no formato internacional (WhatsApp, wa.me, wa_id)"
+regex = '''(?:\+|\b)55[1-9]{2}(?:9\d{8}|[2-5]\d{7})\b'''
+tags = ["dado-pessoal", "telefone"]
+
+[[rules]]
+id = "celular-colado"
+description = "Celular brasileiro de 11 dígitos sem separador (DDD + 9 + 8 dígitos)"
+regex = '''\b[1-9]{2}9\d{8}\b'''
+tags = ["dado-pessoal", "telefone"]
+
+[[rules]]
+id = "email"
+description = "Endereço de e-mail"
+regex = '''\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b'''
+tags = ["dado-pessoal", "email"]
+
+  [[rules.allowlists]]
+  description = "Endereços que não identificam pessoa"
+  regexTarget = "match"
+  regexes = [
+    '''@users\.noreply\.github\.com$''',
+    '''@example\.(?:com|org|net)$''',
+    '''\.(?:test|invalid|example)$''',
+    '''^git@''',
+    '''(?i)@\d+(?:\.\d+)?x\.(?:png|jpe?g|webp|svg|gif|avif)$''',
+  ]
+
+# ---------- Isenção (opcional) ----------
+# Se o repositório tiver amostras positivas para provar que cada regra própria dispara
+# (recomendado: uma amostra por regra, com manifesto exato de achados), isente SÓ essa pasta:
+#
+# [[allowlists]]
+# description = "Amostras sintéticas da prova da varredura"
+# paths = ['''^tests/varredura/positivos/[a-z-]+\.txt$''']

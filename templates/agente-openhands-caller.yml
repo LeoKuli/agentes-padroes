@@ -1,0 +1,37 @@
+# Copie para .github/workflows/agente.yml do repositório.
+# Pré-requisitos (uma vez por repositório; ver docs/OPENHANDS.md):
+#   1. Segredo LLM_API_KEY em Settings > Secrets and variables > Actions (o dono cria, com teto de gasto).
+#   2. Settings > Actions > General > Workflow permissions: "Allow GitHub Actions to create and
+#      approve pull requests" ligado (sem isso o PR não abre).
+#   3. Rótulos: ./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:qwen
+#
+# Uso: na Issue-ficha (rótulo `ficha`), o mantenedor aplica `agente:deepseek` (ou `agente:qwen`).
+# O agente abre um PR que NÃO roda o CI sozinho; revise o diff e feche/reabra o PR.
+name: agente
+
+on:
+  issues:
+    types: [labeled]
+
+# O teto de permissões do workflow chamado; o job do agente usa só `contents: read`.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  agente:
+    # Fixe numa versão (tag ou SHA) do padroes depois de revisar a mudança; nunca @main.
+    uses: LeoKuli/agentes-padroes/.github/workflows/agente-openhands.yml@main
+    with:
+      maintainer: LeoKuli
+      # Rótulo `agente:<sufixo>` -> modelo (ids no formato LiteLLM; OpenRouter: openrouter/<provedor>/<modelo>).
+      modelos: '{"deepseek":"openrouter/deepseek/deepseek-chat","qwen":"openrouter/qwen/qwen3-coder"}'
+      max_iterations: 50
+      timeout_minutes: 45
+    secrets:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      # Provedor direto (sem OpenRouter): descomente e crie o segredo LLM_BASE_URL.
+      # LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      # Se o padroes (privado) não for alcançável pelo GITHUB_TOKEN:
+      # PADROES_TOKEN: ${{ secrets.PADROES_TOKEN }}

@@ -1,0 +1,45 @@
+# CODEOWNERS.example — copie para .github/CODEOWNERS e ajuste os caminhos reais do projeto.
+# Com a proteção da main exigindo "revisão de code owners", agente nenhum altera estes caminhos
+# sem aprovação do dono. A última regra que casa vence: mantenha os caminhos específicos no fim.
+
+# Tudo que o dono precisa aprovar por padrão (opcional; remova se o dono revisa tudo de qualquer forma)
+# *                               @LeoKuli
+
+# Automação e CI
+/.github/                         @LeoKuli
+/.gitleaks.toml                   @LeoKuli
+/.gitattributes                   @LeoKuli
+
+# Configuração de CI/portão fora do .github (ajuste ao projeto)
+/Makefile                         @LeoKuli
+/scripts/ci/                      @LeoKuli
+/scripts/pronto*                  @LeoKuli
+
+# Constituição, ADRs e templates de spec
+/.specify/memory/constitution.md  @LeoKuli
+/.specify/templates/              @LeoKuli
+/docs/adr/                        @LeoKuli
+
+# Instruções para agentes (mudar o contrato é decisão do dono)
+/AGENTS.md                        @LeoKuli
+/CLAUDE.md                        @LeoKuli
+/docs/fichas/_modelo*             @LeoKuli
+
+# Testes de arquitetura e pisos (ajuste ao projeto)
+/tests/arquitetura/               @LeoKuli
+/test/architecture/               @LeoKuli
+/tests/pisos*                     @LeoKuli
+
+# Limiares de mutação e cobertura (ajuste ao nome real da configuração)
+/stryker.conf*                    @LeoKuli
+/mutmut*                          @LeoKuli
+/.mutation*                       @LeoKuli
+/.coveragerc                      @LeoKuli
+/vitest.config.*                  @LeoKuli
+/jest.config.*                    @LeoKuli
+
+# Dependências fixadas (mudança de versão precisa de aprovação)
+/package-lock.json                @LeoKuli
+/mix.lock                         @LeoKuli
+/requirements*.txt                @LeoKuli
+/poetry.lock                      @LeoKuli

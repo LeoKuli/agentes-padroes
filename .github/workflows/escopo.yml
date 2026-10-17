@@ -1,0 +1,83 @@
+name: escopo
+
+# Workflow reutilizável: confere o PR contra a ficha (Issue) que ele cita.
+#
+# Reprova se: o PR não cita a ficha ("Ficha: #123", ou "Ficha: ID" + "Closes #123");
+# a ficha não é uma Issue confiável com o rótulo `ficha`; algum arquivo está fora dos
+# "Arquivos permitidos"; algum arquivo é protegido; o diff passa do "Tamanho máximo";
+# ou nenhum teste foi adicionado/alterado. Falha de medição também reprova (NÃO MEDIDO).
+#
+# Uso no repositório que chama:
+#   on:
+#     pull_request:
+#       types: [opened, edited, synchronize, reopened]
+#   jobs:
+#     escopo:
+#       uses: LeoKuli/agentes-padroes/.github/workflows/escopo.yml@main
+#       permissions: { contents: read, issues: read, pull-requests: read }
+#       secrets: inherit   # opcional; ver `PADROES_TOKEN` abaixo
+#
+# O repositório `padroes` é privado: o job baixa os scripts dele com `actions/checkout`. Se o
+# GITHUB_TOKEN do repositório que chama não enxergar o `padroes`, crie a credencial de leitura
+# `PADROES_TOKEN` (token com acesso de leitura só ao `padroes`) e passe `secrets: inherit`.
+
+on:
+  workflow_call:
+    inputs:
+      protegidos:
+        description: "Globs protegidos (um por linha). Nunca podem ser alterados, mesmo se a ficha permitir."
+        type: string
+        default: |
+          .github/**
+          CODEOWNERS
+          AGENTS.md
+          **/constitution.md
+      protegidos_extra:
+        description: "Globs protegidos adicionais (um por linha), somados aos de `protegidos`."
+        type: string
+        default: ""
+      regex_testes:
+        description: "Regex (Python re.search) dos caminhos que contam como arquivo de teste."
+        type: string
+        default: '(^|/)(test|tests|__tests__)/|_test\.|\.test\.|_spec\.|test_.*\.py$'
+      autores_ficha:
+        description: "author_association aceitas para quem abriu a ficha (separadas por vírgula)."
+        type: string
+        default: "OWNER,MEMBER,COLLABORATOR"
+    secrets:
+      PADROES_TOKEN:
+        description: "Opcional: token de leitura do repositório LeoKuli/agentes-padroes (se o GITHUB_TOKEN não alcançá-lo)."
+        required: false
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  escopo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Baixar os scripts do padroes
+        uses: actions/checkout@v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          # Mesma versão do workflow que está rodando (fixa o script junto com o YAML).
+          ref: ${{ github.job_workflow_sha || 'main' }}
+          path: _padroes
+          token: ${{ secrets.PADROES_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Conferir o escopo do PR contra a ficha
+        env:
+          # Tudo via env, nunca interpolado no script: corpo do PR e da Issue são texto não confiável.
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PROTEGIDOS: ${{ inputs.protegidos }}
+          PROTEGIDOS_EXTRA: ${{ inputs.protegidos_extra }}
+          REGEX_TESTES: ${{ inputs.regex_testes }}
+          AUTORES_FICHA: ${{ inputs.autores_ficha }}
+        run: python3 _padroes/scripts/escopo.py

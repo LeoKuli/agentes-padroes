@@ -1,0 +1,59 @@
+name: segredos
+
+# Workflow reutilizável: varre com gitleaks os commits que o PR traz (base..head).
+# Uso no repositório que chama:
+#   jobs:
+#     segredos:
+#       uses: LeoKuli/agentes-padroes/.github/workflows/segredos.yml@main
+#
+# Usa o .gitleaks.toml da raiz do repositório que chama; se não existir, usa as regras padrão.
+
+on:
+  workflow_call:
+    inputs:
+      gitleaks-version:
+        description: "Versão do gitleaks (sem o v)"
+        type: string
+        default: "8.30.1"
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (histórico completo para ler o diff do PR)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Instalar gitleaks
+        env:
+          GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o "$RUNNER_TEMP/gitleaks.tgz"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+
+      - name: Varrer os commits do PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          args=(git --redact --no-banner --exit-code 1 -v)
+          if [ -f .gitleaks.toml ]; then
+            args+=(--config .gitleaks.toml)
+          fi
+          if [ -n "${BASE_SHA:-}" ] && [ -n "${HEAD_SHA:-}" ]; then
+            # Só o que o PR traz. Três pontos não: queremos os commits do ramo, não a diferença simétrica.
+            args+=(--log-opts "${BASE_SHA}..${HEAD_SHA}")
+          else
+            echo "Sem contexto de pull_request: varrendo o histórico inteiro."
+          fi
+          "$RUNNER_TEMP/gitleaks" "${args[@]}" .
