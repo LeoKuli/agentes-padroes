@@ -9,6 +9,7 @@ the issue text is untrusted):
     rodar    run the OpenHands agent (SDK) in the current directory
     pr-corpo build the pull request body
     pr-comentario  build the comment posted on the pull request
+    fora-da-ficha  list the patched paths the ficha does not allow (NUL-separated, stdin -> stdout)
 
 Only `rodar` needs the OpenHands SDK; the others use the standard library so the tests
 can run anywhere. Failures exit non-zero with a `::error::` annotation in pt-BR.
@@ -115,7 +116,31 @@ def montar_prompt(issue: dict) -> str:
     return MOLDE_PROMPT.format(numero=numero, titulo=titulo, corpo=corpo)
 
 
-def montar_corpo_pr(numero: int, sufixo: str, modelo: str, run_url: str, excluidos: list[str]) -> str:
+def fora_da_ficha(issue: dict, caminhos: list[str]) -> list[str]:
+    """Paths the agent changed that the ficha does not allow (they are dropped before the PR).
+
+    The ficha is read by the same parser the `escopo` check uses, so the automation and the
+    check never disagree. An unreadable ficha raises: fail closed, no PR.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import escopo  # noqa: PLC0415 - sibling script, imported only here
+
+    try:
+        ficha = escopo.ler_ficha(issue, int(issue.get("number") or 0))
+    except escopo.ErroFicha as e:
+        raise ErroAgente(f"Ficha ilegível para filtrar o patch: {e}") from e
+    return [c for c in caminhos if c and escopo.casa(c, ficha.permitidos) is None]
+
+
+def montar_corpo_pr(
+    numero: int,
+    sufixo: str,
+    modelo: str,
+    run_url: str,
+    excluidos: list[str],
+    fora: list[str] | None = None,
+    custo: str = "",
+) -> str:
     # `Ficha: #N` precisa estar numa linha só, sem nada depois (ficha.yml / escopo.yml leem assim).
     linhas = [
         f"Ficha: #{numero}",
@@ -130,6 +155,8 @@ def montar_corpo_pr(numero: int, sufixo: str, modelo: str, run_url: str, excluid
         "",
         f"Modelo `{modelo}` (rótulo `agente:{sufixo}`) via OpenHands SDK no GitHub Actions: {run_url}",
         "",
+        f"Custo estimado pelo SDK: {('US$ ' + custo) if custo else 'NÃO MEDIDO'}",
+        "",
         "## Dúvidas ou riscos para o revisor",
         "",
         "- Este PR foi aberto com o `GITHUB_TOKEN`; o CI **não** roda sozinho. O revisor confere o diff, em especial `.github/`, e fecha/reabre o PR para disparar o CI.",
@@ -137,6 +164,12 @@ def montar_corpo_pr(numero: int, sufixo: str, modelo: str, run_url: str, excluid
     ]
     if excluidos:
         linhas.append("- Mudanças em `.github/` pedidas pelo agente foram **descartadas** pela automação: " + ", ".join(f"`{p}`" for p in excluidos) + ".")
+    if fora:
+        linhas.append(
+            "- Arquivos FORA dos permitidos da ficha foram **descartados** pela automação (contam contra o modelo no placar): "
+            + ", ".join(f"`{p}`" for p in fora)
+            + "."
+        )
     return "\n".join(linhas) + "\n"
 
 
@@ -227,7 +260,21 @@ def cmd_rodar() -> None:
 
 def cmd_pr_corpo() -> None:
     excluidos = [p for p in _env("EXCLUIDOS").split("\n") if p.strip()]
-    sys.stdout.write(montar_corpo_pr(int(_env("NUMERO")), _env("SUFIXO"), _env("MODELO"), _env("RUN_URL"), excluidos))
+    fora = [p for p in _env("FORA_DA_FICHA").split("\n") if p.strip()]
+    custo = _env("CUSTO").strip()
+    if custo and not re.fullmatch(r"[0-9]+(\.[0-9]+)?", custo):
+        custo = ""
+    sys.stdout.write(
+        montar_corpo_pr(int(_env("NUMERO")), _env("SUFIXO"), _env("MODELO"), _env("RUN_URL"), excluidos, fora, custo)
+    )
+
+
+def cmd_fora_da_ficha() -> None:
+    """stdin: NUL-separated paths staged from the patch. stdout: NUL-separated paths outside the ficha."""
+    issue = _carregar_evento().get("issue") or {}
+    caminhos = sys.stdin.buffer.read().decode("utf-8").split("\0")
+    fora = fora_da_ficha(issue, caminhos)
+    sys.stdout.buffer.write("".join(c + "\0" for c in fora).encode("utf-8"))
 
 
 def cmd_pr_comentario() -> None:
@@ -240,6 +287,7 @@ COMANDOS = {
     "rodar": cmd_rodar,
     "pr-corpo": cmd_pr_corpo,
     "pr-comentario": cmd_pr_comentario,
+    "fora-da-ficha": cmd_fora_da_ficha,
 }
 
 

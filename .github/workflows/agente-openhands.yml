@@ -88,6 +88,7 @@ jobs:
       contents: read
     outputs:
       tem_mudancas: ${{ steps.patch.outputs.tem_mudancas }}
+      custo: ${{ steps.patch.outputs.custo }}
       base_sha: ${{ steps.base.outputs.sha }}
       sufixo: ${{ steps.modelo.outputs.sufixo }}
       modelo: ${{ steps.modelo.outputs.modelo }}
@@ -177,6 +178,8 @@ jobs:
             echo "tem_mudancas=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          custo="$(grep -oE 'Custo acumulado \(estimado pelo SDK\): [0-9]+(\.[0-9]+)?' "$GITHUB_WORKSPACE/agente.log" | tail -n 1 | grep -oE '[0-9]+(\.[0-9]+)?$' || true)"
+          echo "custo=${custo}" >> "$GITHUB_OUTPUT"
           git -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-ext-diff > "$GITHUB_WORKSPACE/agente.patch"
           git -c core.hooksPath=/dev/null diff --cached --stat | tail -n 20
           tamanho=$(wc -c < "$GITHUB_WORKSPACE/agente.patch")
@@ -249,8 +252,16 @@ jobs:
           # Arquivos que o agente tentou mudar em .github/ (só para avisar; o descarte é o --exclude).
           git apply --numstat "$patch" | cut -f3 | grep -E '^(\.github/|"?\.github/)' > "$GITHUB_WORKSPACE/excluidos.txt" || true
           git apply --index --exclude='.github/*' --exclude='.git/*' "$patch"
+          # Só entra no PR o que a ficha permite. O resto (arquivo-lixo, mudança fora do escopo) sai do
+          # índice aqui e é listado no PR. A ficha ilegível faz o passo falhar: sem PR (falha fechada).
+          git diff --cached --name-only -z \
+            | python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" fora-da-ficha > "$RUNNER_TEMP/fora.bin"
+          if [ -s "$RUNNER_TEMP/fora.bin" ]; then
+            xargs -0 git reset -q -- < "$RUNNER_TEMP/fora.bin"
+          fi
+          tr '\0' '\n' < "$RUNNER_TEMP/fora.bin" > "$GITHUB_WORKSPACE/fora.txt"
           if git diff --cached --quiet; then
-            echo "Depois de descartar .github/, não sobrou nada."
+            echo "Depois de descartar .github/ e o que está fora da ficha, não sobrou nada."
             echo "vazio=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -276,6 +287,7 @@ jobs:
           NUMERO: ${{ needs.agente.outputs.numero }}
           SUFIXO: ${{ needs.agente.outputs.sufixo }}
           MODELO: ${{ needs.agente.outputs.modelo }}
+          CUSTO: ${{ needs.agente.outputs.custo }}
           BASE_BRANCH: ${{ inputs.base_branch || github.event.repository.default_branch }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -284,7 +296,8 @@ jobs:
           set -euo pipefail
           branch="agente/ficha-${NUMERO}-${SUFIXO}-${RUN_ID}"
           EXCLUIDOS="$(cat "$GITHUB_WORKSPACE/excluidos.txt" 2>/dev/null || true)"
-          export EXCLUIDOS
+          FORA_DA_FICHA="$(cat "$GITHUB_WORKSPACE/fora.txt" 2>/dev/null || true)"
+          export EXCLUIDOS FORA_DA_FICHA
 
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit --quiet -m "chore: cumpre a ficha #${NUMERO} (agente:${SUFIXO})"

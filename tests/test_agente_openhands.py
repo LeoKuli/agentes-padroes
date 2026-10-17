@@ -127,3 +127,48 @@ def test_rodar_sem_chave_falha_sem_importar_o_sdk(monkeypatch, capsys):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     assert ag.main(["x", "rodar"]) == 1
     assert "LLM_API_KEY" in capsys.readouterr().out
+
+
+FICHA_OK = (
+    "### Arquivos permitidos\n\ntests/test_radar_num.py\n\n"
+    "### Tamanho máximo do diff (linhas)\n\n60\n"
+)
+
+
+def issue_ficha(corpo=FICHA_OK):
+    return {"number": 4, "body": corpo, "author_association": "OWNER", "labels": [{"name": "ficha"}]}
+
+
+def test_fora_da_ficha_descarta_o_lixo_e_mantem_o_permitido():
+    # Caso real 17/10 (video-edicao #7): o kimi gravou a saída de um `git diff` num arquivo "tatus --short".
+    fora = ag.fora_da_ficha(issue_ficha(), ["tests/test_radar_num.py", "tatus --short", "radar/coleta.py", ""])
+    assert fora == ["tatus --short", "radar/coleta.py"]
+
+
+def test_fora_da_ficha_controle_positivo_tudo_permitido():
+    assert ag.fora_da_ficha(issue_ficha(), ["tests/test_radar_num.py"]) == []
+
+
+def test_fora_da_ficha_ilegivel_falha_fechado():
+    with pytest.raises(ag.ErroAgente):
+        ag.fora_da_ficha(issue_ficha("### Objetivo\n\nsem seções de escopo"), ["qualquer.py"])
+
+
+def test_cli_fora_da_ficha_le_e_escreve_separado_por_nul(tmp_path, monkeypatch, capsysbinary):
+    ev = tmp_path / "ev.json"
+    ev.write_text(json.dumps({"issue": issue_ficha()}), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(ev))
+    import io
+
+    entrada = io.TextIOWrapper(io.BytesIO("tests/test_radar_num.py\0tatus --short\0".encode()), encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", entrada)
+    assert ag.main(["x", "fora-da-ficha"]) == 0
+    assert capsysbinary.readouterr().out == b"tatus --short\0"
+
+
+def test_corpo_do_pr_traz_o_custo_e_o_que_saiu_da_ficha():
+    corpo = ag.montar_corpo_pr(3, "kimi", "m", "https://r", [], ["tatus --short"], "0.29")
+    assert "US$ 0.29" in corpo
+    assert "`tatus --short`" in corpo and "FORA dos permitidos" in corpo
+    sem = ag.montar_corpo_pr(3, "kimi", "m", "https://r", [])
+    assert "NÃO MEDIDO" in sem and "FORA dos permitidos" not in sem
