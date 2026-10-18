@@ -52,6 +52,7 @@ ROTULO_PRONTO = "estado:pode-juntar"
 # Estados de mergeabilidade aceitos. "blocked" entra porque é o estado da revisão obrigatória, que o app
 # pode contornar; quem decide de verdade é a API de junção, e ela recusa o que a proteção não deixa.
 ESTADOS_MERGEAVEIS = ("clean", "blocked", "has_hooks")
+MOTIVO_ATRASADO = "a branch do PR está atrás da base (a proteção exige branch atualizada)"
 MSG_JUNTADO = "Juntado automaticamente: ficha só de teste, todos os checks verdes"
 MSG_PRONTO = "Pronto para juntar (só teste, tudo verde)."
 TENTATIVAS_MERGEABLE = 4
@@ -69,6 +70,11 @@ class Decisao:
     ficha: int | None = None
     custo: str = ""
     ja_pronto: bool = False
+
+    @property
+    def so_atrasado(self) -> bool:
+        """Tudo passou, menos a branch estar atrás da base: o conserto é atualizá-la (o CI roda de novo)."""
+        return self.motivos == [MOTIVO_ATRASADO] and not self.nao_medido
 
     def resumo(self) -> str:
         if self.juntar:
@@ -194,6 +200,8 @@ def checar_mergeable(pr: dict) -> list[str]:
         return ["NÃO MEDIDO: o GitHub ainda não calculou se o PR é mergeable (valor nulo)"]
     if pr.get("mergeable") is not True:
         return ["o PR não é mergeable (conflito com a base)"]
+    if pr.get("mergeable_state") == "behind":
+        return [MOTIVO_ATRASADO]
     if pr.get("mergeable_state") not in ESTADOS_MERGEAVEIS:
         return [f"estado de junção `{pr.get('mergeable_state')}` (esperado: {', '.join(ESTADOS_MERGEAVEIS)})"]
     return []
@@ -375,8 +383,15 @@ def juntar(gh, repo: str, d: Decisao) -> None:
             pass  # o comentário na ficha é registro; a junção já aconteceu
 
 
-def agir(gh, repo: str, d: Decisao, acao: str, dry_run: bool) -> str:
+def agir(gh, repo: str, d: Decisao, acao: str, dry_run: bool, atualizar: bool = True) -> str:
     """Executa a decisão. Devolve uma linha de resultado; levanta ErroNaoMedido só se nem o plano B funcionou."""
+    if d.so_atrasado:
+        if dry_run:
+            return "dry-run: a branch seria atualizada com a base"
+        if not atualizar:
+            return "branch atrás da base; nada a fazer (atualização desligada)"
+        gh(["pr", "update-branch", str(d.numero), "--repo", repo])
+        return "branch atualizada com a base; o CI roda de novo e a próxima rodada junta"
     if not d.juntar:
         return "nada a fazer"
     if dry_run:
@@ -405,6 +420,7 @@ def main(argv: list[str] | None = None, env: dict | None = None, gh=escopo.gh_cl
     p.add_argument("--base", default="main", help="branch-base aceito (padrão: main)")
     p.add_argument("--acao", choices=("juntar", "etiquetar"), default="juntar")
     p.add_argument("--dry-run", action="store_true", help="decide e imprime; não altera nada")
+    p.add_argument("--sem-atualizar-branch", action="store_true", help="não atualiza a branch do PR que só está atrás da base")
     p.add_argument("--regex-testes", default=env.get("REGEX_TESTES") or escopo.REGEX_TESTES_PADRAO)
     args = p.parse_args(argv)
 
@@ -442,8 +458,8 @@ def main(argv: list[str] | None = None, env: dict | None = None, gh=escopo.gh_cl
         if d.nao_medido:
             saida = 1
         try:
-            resultado = agir(gh, args.repo, d, args.acao, args.dry_run)
-            if d.juntar:
+            resultado = agir(gh, args.repo, d, args.acao, args.dry_run, not args.sem_atualizar_branch)
+            if d.juntar or d.so_atrasado:
                 dizer(f"    - {resultado}")
         except escopo.ErroNaoMedido as e:
             dizer(f"    - {escopo._limpar(str(e))}")  # noqa: SLF001

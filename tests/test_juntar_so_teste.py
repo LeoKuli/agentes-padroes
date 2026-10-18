@@ -494,3 +494,41 @@ def test_decisoes_nao_mudam_o_cenario_de_outro_teste():
     a, b = _cenario_verde(), _cenario_verde()
     a.latest[0] = _check("pronto", "failure")
     assert _decidir(b).juntar and copy.deepcopy(b.latest[0])["conclusion"] == "success"
+
+
+# ------------------------------------------------------------------ branch atrás da base (proteção estrita)
+
+
+def test_so_atrasada_atualiza_a_branch_e_nao_junta_nesta_rodada():
+    gh = _cenario_verde()
+    gh.pr = _pr(mergeable_state="behind")
+    d = _decidir(gh)
+    assert d.so_atrasado and not d.juntar
+    assert jt.main(["--repo", REPO, "--pr", "9"], env={}, gh=gh, dormir=lambda _s: None) == 0
+    assert gh.escreveu("pr", "update-branch", "9")
+    assert not gh.escreveu("pr", "merge")
+
+
+def test_atrasada_com_outro_motivo_nao_atualiza_e_dry_run_nao_escreve():
+    gh = _cenario_verde()
+    gh.pr = _pr(mergeable_state="behind")
+    gh.latest[0] = _check("pronto", status="in_progress")  # ainda pendente: atualizar agora só duplicaria o CI
+    d = _decidir(gh)
+    assert not d.so_atrasado
+    jt.main(["--repo", REPO, "--pr", "9"], env={}, gh=gh, dormir=lambda _s: None)
+    assert gh.escritas == []
+
+    gh = _cenario_verde()
+    gh.pr = _pr(mergeable_state="behind")
+    jt.main(["--repo", REPO, "--pr", "9", "--dry-run"], env={}, gh=gh, dormir=lambda _s: None)
+    assert gh.escritas == []
+    jt.main(["--repo", REPO, "--pr", "9", "--sem-atualizar-branch"], env={}, gh=gh, dormir=lambda _s: None)
+    assert gh.escritas == []
+
+
+def test_atrasada_que_e_de_arquivo_de_lib_nunca_e_atualizada():
+    gh = _cenario_verde()
+    gh.pr = _pr(mergeable_state="behind")
+    gh.arquivos.append(("src/lib.py", "modified", 1, 0))
+    jt.main(["--repo", REPO, "--pr", "9"], env={}, gh=gh, dormir=lambda _s: None)
+    assert gh.escritas == []
