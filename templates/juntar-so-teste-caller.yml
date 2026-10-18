@@ -1,0 +1,57 @@
+# Copie para .github/workflows/juntar-so-teste.yml do repositório.
+# Junta sozinho (squash) o PR do agente cuja ficha é SÓ DE TESTE e cujos checks estão todos verdes.
+# A decisão está em scripts/juntar_so_teste.py do agentes-padroes (testada); veja o cabeçalho de
+# .github/workflows/juntar-so-teste.yml para as 5 regras.
+#
+# Pré-requisitos (uma vez por repositório):
+#   1. Segredo PORTAO_APP_KEY (chave do app GitHub `kuligovski-portao`, App ID 5363413) em Actions.
+#   2. Proteção do branch principal com `bypass_pull_request_allowances.apps: ["kuligovski-portao"]`, para o app
+#      passar por cima SÓ da revisão de code owner. Sem isso a junção é recusada e o script cai para o aviso
+#      "pronto para juntar" + rótulo `estado:pode-juntar`.
+#
+# Quando roda:
+#   - workflow_run: quando termina um workflow de PR de uma branch `agente/...` (o PR do agente) — é o caminho
+#     rápido e barato (só roda quando há o que olhar);
+#   - schedule: rede de segurança. Em repositório PRIVADO cada rodada custa no mínimo 1 minuto de Actions:
+#     a cada 10 min seriam ~4.300 min/mês por repositório. Por isso a rede é de 6 em 6 horas; se quiser mais
+#     frequente, troque o cron sabendo disso;
+#   - workflow_dispatch: à mão (`pr` = um PR; `dry_run` = só decide e mostra).
+name: juntar-so-teste
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Número do PR (vazio = todos os PRs de agente abertos)"
+        type: string
+        default: ""
+      dry_run:
+        description: "Só decide e mostra; não junta nem comenta"
+        type: boolean
+        default: false
+  workflow_run:
+    # Os workflows que julgam o PR neste repositório (nomes EXATOS do campo `name:` de cada um).
+    workflows: ["ci"]
+    types: [completed]
+  schedule:
+    - cron: "23 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  juntar:
+    # No workflow_run só interessa a branch do agente; qualquer outra termina aqui sem custo.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (startsWith(github.event.workflow_run.head_branch, 'agente/') &&
+       (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push'))
+    # Fixe numa versão (SHA) do padroes depois de revisar a mudança; nunca @main.
+    uses: LeoKuli/agentes-padroes/.github/workflows/juntar-so-teste.yml@main
+    permissions:
+      contents: read
+    with:
+      pr: ${{ inputs.pr }}
+      dry_run: ${{ inputs.dry_run == true }}
+    secrets:
+      PORTAO_APP_KEY: ${{ secrets.PORTAO_APP_KEY }}

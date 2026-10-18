@@ -1,0 +1,110 @@
+name: juntar-so-teste
+
+# Workflow reutilizável: junta sozinho (squash) o PR do agente cuja FICHA É SÓ DE TESTE e cujos checks estão
+# TODOS verdes. A decisão mora em scripts/juntar_so_teste.py (testado); este arquivo só gera o token do app
+# e chama o script. Regras (todas obrigatórias; dúvida = não junta):
+#   1. PR de kuligovski-portao[bot] / github-actions[bot], título `[agente:...`, corpo com `Ficha: #N`;
+#   2. a Issue N é `ficha`, autor OWNER, e os "Arquivos permitidos" são só caminhos de teste;
+#   3. todo arquivo do PR é de teste E está nos permitidos da ficha (nada protegido, nada removido);
+#   4. todos os checks da cabeça concluídos com sucesso (pendente/falho/pulado reprova; `skipped` só vale para
+#      escopo/ficha com irmão de mesmo nome verde; check de mutação precisa estar verde; checks obrigatórios
+#      da proteção do branch precisam existir e passar);
+#   5. o PR é mergeable.
+# Falha de medição devolve NÃO MEDIDO (o job fica vermelho) e não junta.
+#
+# Passar por cima da revisão obrigatória de code owner: o app `kuligovski-portao` precisa estar em
+# `bypass_pull_request_allowances.apps` da proteção da branch (só ele; ninguém mais é afrouxado). Sem isso a
+# junção é recusada e o script cai para: comentar "pronto para juntar" + rótulo `estado:pode-juntar`.
+#
+# Uso no repositório que chama (veja templates/juntar-so-teste-caller.yml):
+#   on: { workflow_dispatch: {...}, workflow_run: {...}, schedule: [...] }
+#   jobs:
+#     juntar:
+#       uses: LeoKuli/agentes-padroes/.github/workflows/juntar-so-teste.yml@<SHA>
+#       secrets:
+#         PORTAO_APP_KEY: ${{ secrets.PORTAO_APP_KEY }}
+
+on:
+  workflow_call:
+    inputs:
+      pr:
+        description: "Examina só este PR (número). Vazio = todos os PRs de agente abertos."
+        type: string
+        default: ""
+      dry_run:
+        description: "Só decide e mostra; não junta nem comenta."
+        type: boolean
+        default: false
+      acao:
+        description: "`juntar` (squash) ou `etiquetar` (só comenta `pronto para juntar` + rótulo `estado:pode-juntar`)."
+        type: string
+        default: "juntar"
+      base:
+        description: "Branch-base aceito."
+        type: string
+        default: "main"
+      regex_testes:
+        description: "Regex (Python re.search) dos caminhos que contam como teste. Vazio = padrão do escopo.py."
+        type: string
+        default: ""
+    secrets:
+      PORTAO_APP_KEY:
+        description: "Chave privada do app GitHub kuligovski-portao (App ID 5363413)."
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: juntar-so-teste-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  juntar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Gerar o token do app kuligovski-portao
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: 5363413
+          private-key: ${{ secrets.PORTAO_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-checks: read
+          permission-statuses: read
+
+      - name: Baixar os scripts do padroes
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          ref: ${{ github.job_workflow_sha || 'main' }}
+          path: _padroes
+          persist-credentials: false
+
+      - name: Decidir e juntar
+        env:
+          # Tudo por env, nunca interpolado no script do passo.
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          ACAO: ${{ inputs.acao }}
+          BASE: ${{ inputs.base }}
+          REGEX_TESTES: ${{ inputs.regex_testes }}
+        run: |
+          set -euo pipefail
+          args=(--repo "$GH_REPO" --acao "$ACAO" --base "$BASE")
+          if [ -n "$PR" ]; then
+            if ! printf '%s' "$PR" | grep -Eq '^[0-9]+$'; then
+              echo "::error::pr precisa ser um número; recebi '$PR'."
+              exit 1
+            fi
+            args+=(--pr "$PR")
+          fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 _padroes/scripts/juntar_so_teste.py "${args[@]}"

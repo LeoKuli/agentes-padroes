@@ -96,6 +96,17 @@ e o CI roda sozinho, sem fechar/reabrir.
   (testes, por exemplo) executa no CI do repositório. Por isso a ficha deve listar só os arquivos necessários e o CI
   dos `pull_request` não deve receber segredos além dos de leitura.
 
+### Junção automática de PR de ficha SÓ DE TESTE (opcional)
+
+`scripts/juntar_so_teste.py` + `.github/workflows/juntar-so-teste.yml` (chamador: `templates/juntar-so-teste-caller.yml`)
+juntam por squash o PR do agente que cumpre TODAS as regras: autor `kuligovski-portao[bot]`/`github-actions[bot]`, título
+`[agente:...`, `Ficha: #N`; a ficha é `ficha` de autor OWNER e só permite caminhos de teste; todo arquivo do PR é de
+teste e está nos permitidos; todos os checks da cabeça verdes (pendente, falho ou pulado reprova; check de mutação
+tem de estar verde; checks obrigatórios da proteção têm de existir); PR mergeable. Qualquer dúvida ou falha de
+medição = não junta (NÃO MEDIDO). `--dry-run` só decide e mostra. Passar por cima da revisão obrigatória exige o
+app em `bypass_pull_request_allowances.apps` da proteção do branch; se a proteção não deixar, o script comenta
+"pronto para juntar" e põe o rótulo `estado:pode-juntar` para uma pessoa juntar com um comando.
+
 ## 2. Como o workflow funciona
 
 ```
