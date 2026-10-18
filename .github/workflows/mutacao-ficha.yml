@@ -1,0 +1,105 @@
+name: mutacao-ficha
+
+# Workflow reutilizável: confere a "Mutação que tem de morrer" da ficha (Issue) que o PR cita.
+#
+# Para cada mutação da ficha: o trecho a trocar tem de aparecer EXATAMENTE 1 vez no arquivo; com a
+# troca aplicada o comando de teste tem de REPROVAR; o arquivo é restaurado; no fim o comando roda na
+# árvore restaurada e tem de PASSAR (controle positivo). Ficha sem seção de mutação = NÃO MEDIDO = falha.
+# O resultado vai como tabela no resumo do job ($GITHUB_STEP_SUMMARY).
+#
+# Só roda em PR aberto por agente (autor `github-actions[bot]`) cuja descrição tem `Ficha: #N`.
+# Em qualquer outro PR o job fica "skipped".
+#
+# Uso no repositório que chama:
+#   on:
+#     pull_request:
+#       types: [opened, reopened, synchronize]
+#   jobs:
+#     mutacao:
+#       uses: LeoKuli/agentes-padroes/.github/workflows/mutacao-ficha.yml@<SHA>
+#       permissions: { contents: read, issues: read, pull-requests: read }
+#       with:
+#         comando_teste: python -B -m unittest discover -s tests   # o mesmo comando do CI
+#         preparar: pip install -r requirements.txt                 # opcional
+#         runner: '"ubuntu-latest"'                                  # JSON; ex.: '["self-hosted","bancada"]'
+#
+# Segurança: o comando de teste executa o código do PR. O job tem token só de leitura, o checkout não
+# persiste credencial e o comando roda SEM GH_TOKEN/GITHUB_TOKEN no ambiente. O corpo do PR e da Issue
+# chegam por env, nunca dentro do script do passo. O comando de teste e o de preparo vêm do workflow
+# chamador (confiável), nunca do PR.
+
+on:
+  workflow_call:
+    inputs:
+      comando_teste:
+        description: "Comando que roda os testes (shell). Sai com código != 0 quando algum teste reprova."
+        type: string
+        required: true
+      preparar:
+        description: "Comando opcional de instalação, rodado uma vez antes dos testes."
+        type: string
+        default: ""
+      runner:
+        description: 'Runner em JSON (ex.: "ubuntu-latest" ou ["self-hosted","bancada"]).'
+        type: string
+        default: '"ubuntu-latest"'
+      timeout_minutes:
+        description: "Tempo máximo do job inteiro, em minutos."
+        type: number
+        default: 30
+      timeout_segundos:
+        description: "Tempo máximo de CADA rodada do comando de teste, em segundos."
+        type: number
+        default: 900
+      autores_ficha:
+        description: "author_association aceitas para quem abriu a ficha (separadas por vírgula)."
+        type: string
+        default: "OWNER,MEMBER,COLLABORATOR"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  mutacao:
+    if: >-
+      github.event.pull_request.user.login == 'github-actions[bot]'
+      && contains(github.event.pull_request.body, 'Ficha: #')
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Baixar o código do PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: codigo
+          persist-credentials: false
+
+      - name: Baixar os scripts do padroes
+        uses: actions/checkout@v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          # Mesma versão do workflow que está rodando (fixa o script junto com o YAML).
+          ref: ${{ github.job_workflow_sha || 'main' }}
+          path: _padroes
+          persist-credentials: false
+
+      - name: Preparar o ambiente
+        if: inputs.preparar != ''
+        working-directory: codigo
+        env:
+          PREPARAR: ${{ inputs.preparar }}
+        run: bash -e -c "$PREPARAR"
+
+      - name: Conferir a mutação da ficha
+        working-directory: codigo
+        env:
+          # Tudo via env, nunca interpolado no script: corpo do PR e da Issue são texto não confiável.
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          COMANDO_TESTE: ${{ inputs.comando_teste }}
+          TIMEOUT_SEGUNDOS: ${{ inputs.timeout_segundos }}
+          AUTORES_FICHA: ${{ inputs.autores_ficha }}
+        run: python3 ../_padroes/scripts/mutacao_da_ficha.py

@@ -47,7 +47,17 @@ branch `agente/ficha-<n>-<modelo>-<run>` no próprio repositório, aberto pelo `
 
 Cada etapa só roda se a anterior passou. Um PR que reprova nas etapas 1–3 volta ao agente **sem gastar modelo**.
 
-### Etapa 4 — mutação (bancada)
+### Etapa 4 — mutação (automática + bancada)
+
+**Conferência automática da mutação da ficha** (`mutacao-ficha.yml`, `scripts/mutacao_da_ficha.py`): em PR de
+agente (autor `github-actions[bot]`, com `Ficha: #N`), lê a seção "Mutação que tem de morrer" da Issue, exige que o
+trecho a trocar apareça EXATAMENTE 1 vez no arquivo, aplica, roda o comando de teste do repositório (tem de
+REPROVAR), restaura o arquivo e roda o comando na árvore limpa (tem de PASSAR). Ficha sem a seção, âncora que não casa
+ou tempo esgotado = NÃO MEDIDO = job vermelho. O resumo do job traz a tabela e a cauda da saída de cada mutante: o
+script prova que o teste reprova, mas **que reprovou na asserção indicada continua sendo leitura do revisor**
+(só o mutante que nem importa/compila é recusado sozinho).
+
+**Mutação pesada da bancada** (a ferramenta de mutação do repositório):
 
 A mutação é pesada e roda fora do GitHub-hosted runner (na bancada). Por isso:
 

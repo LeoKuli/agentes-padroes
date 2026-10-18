@@ -23,6 +23,7 @@ sem acesso à VPS, à produção, a segredos ou a dados de paciente. Só pull re
 | `.github/workflows/segredos.yml` | Workflow reutilizável: gitleaks no diff do PR |
 | `.github/workflows/ficha.yml` | Workflow reutilizável: o PR precisa citar uma ficha (`Ficha: #123` ou `Ficha: ID`) |
 | `.github/workflows/escopo.yml` | Workflow reutilizável: confere o PR contra a ficha (Issue): arquivos permitidos/protegidos, tamanho do diff, teste presente |
+| `.github/workflows/mutacao-ficha.yml` + `scripts/mutacao_da_ficha.py` | Workflow reutilizável: aplica a "Mutação que tem de morrer" da ficha (âncora exata, 1 ocorrência), exige que o teste reprove, restaura e confere o controle positivo; só em PR de agente com `Ficha: #N` |
 | `.github/workflows/agente-openhands.yml` | Workflow reutilizável: agente OpenHands dentro do GitHub Actions, disparado pelo rótulo `agente:<modelo>` numa ficha; abre PR sem rodar o CI |
 | `templates/agente-openhands-caller.yml` | O chamador pequeno que cada repositório copia para `.github/workflows/agente.yml` |
 | `docs/OPENHANDS.md` | Pesquisa (resolver V0 removido; SDK V1 fixado), travas, passos do dono, custo |
