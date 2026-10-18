@@ -456,4 +456,9 @@ def main(argv: list[str] | None = None, env: dict | None = None, gh=escopo.gh_cl
 
 
 if __name__ == "__main__":
+    for _fluxo in (sys.stdout, sys.stderr):  # console do Windows em cp1252 quebraria os acentos do relato
+        try:
+            _fluxo.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     sys.exit(main())
