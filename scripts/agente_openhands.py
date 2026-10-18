@@ -132,6 +132,23 @@ def fora_da_ficha(issue: dict, caminhos: list[str]) -> list[str]:
     return [c for c in caminhos if c and escopo.casa(c, ficha.permitidos) is None]
 
 
+# Sem a chave do app o PR sai com o GITHUB_TOKEN (o CI não dispara); com ela sai do app e o CI roda sozinho.
+_LINHA_RISCO_SEM_CI = (
+    "- Este PR foi aberto com o `GITHUB_TOKEN`; o CI **não** roda sozinho. O revisor confere o diff, "
+    "em especial `.github/`, e fecha/reabre o PR para disparar o CI."
+)
+_LINHA_ACEITE_SEM_CI = (
+    "- Comando de aceite da ficha: NÃO MEDIDO por esta automação; o CI (após o fechar/reabrir) é quem mede."
+)
+_LINHA_RISCO_CI_SOZINHO = (
+    "- Este PR foi aberto pelo app `kuligovski-portao`; o CI roda sozinho. O revisor confere o diff, "
+    "em especial `.github/` (a automação descarta mudanças ali)."
+)
+_LINHA_ACEITE_CI_SOZINHO = (
+    "- Comando de aceite da ficha: NÃO MEDIDO por esta automação; o CI que dispara neste PR é quem mede."
+)
+
+
 def montar_corpo_pr(
     numero: int,
     sufixo: str,
@@ -140,6 +157,7 @@ def montar_corpo_pr(
     excluidos: list[str],
     fora: list[str] | None = None,
     custo: str = "",
+    ci_sozinho: bool = False,
 ) -> str:
     # `Ficha: #N` precisa estar numa linha só, sem nada depois (ficha.yml / escopo.yml leem assim).
     linhas = [
@@ -159,8 +177,8 @@ def montar_corpo_pr(
         "",
         "## Dúvidas ou riscos para o revisor",
         "",
-        "- Este PR foi aberto com o `GITHUB_TOKEN`; o CI **não** roda sozinho. O revisor confere o diff, em especial `.github/`, e fecha/reabre o PR para disparar o CI.",
-        "- Comando de aceite da ficha: NÃO MEDIDO por esta automação; o CI (após o fechar/reabrir) é quem mede.",
+        _LINHA_RISCO_CI_SOZINHO if ci_sozinho else _LINHA_RISCO_SEM_CI,
+        _LINHA_ACEITE_CI_SOZINHO if ci_sozinho else _LINHA_ACEITE_SEM_CI,
     ]
     if excluidos:
         linhas.append("- Mudanças em `.github/` pedidas pelo agente foram **descartadas** pela automação: " + ", ".join(f"`{p}`" for p in excluidos) + ".")
@@ -173,7 +191,12 @@ def montar_corpo_pr(
     return "\n".join(linhas) + "\n"
 
 
-def montar_comentario_pr(sufixo: str, modelo: str) -> str:
+def montar_comentario_pr(sufixo: str, modelo: str, ci_sozinho: bool = False) -> str:
+    if ci_sozinho:
+        return (
+            f"PR aberto por agente (modelo {modelo}, rótulo `agente:{sufixo}`) pelo app `kuligovski-portao`: "
+            "o CI roda sozinho. O mantenedor revisa o diff, em especial .github/."
+        )
     return (
         f"PR aberto por agente (modelo {modelo}, rótulo `agente:{sufixo}`). A checagem NÃO roda sozinha: "
         "o mantenedor revisa o diff, em especial .github/, e fecha/reabre o PR para disparar o CI."
@@ -185,6 +208,11 @@ def montar_comentario_pr(sufixo: str, modelo: str) -> str:
 
 def _env(nome: str, padrao: str = "") -> str:
     return os.environ.get(nome, padrao)
+
+
+def _ci_sozinho() -> bool:
+    """O workflow põe CI_SOZINHO=true quando o PR sai com o token do app (o CI dispara sozinho)."""
+    return _env("CI_SOZINHO").strip().casefold() == "true"
 
 
 def _carregar_evento() -> dict:
@@ -265,7 +293,9 @@ def cmd_pr_corpo() -> None:
     if custo and not re.fullmatch(r"[0-9]+(\.[0-9]+)?", custo):
         custo = ""
     sys.stdout.write(
-        montar_corpo_pr(int(_env("NUMERO")), _env("SUFIXO"), _env("MODELO"), _env("RUN_URL"), excluidos, fora, custo)
+        montar_corpo_pr(
+            int(_env("NUMERO")), _env("SUFIXO"), _env("MODELO"), _env("RUN_URL"), excluidos, fora, custo, _ci_sozinho()
+        )
     )
 
 
@@ -278,7 +308,7 @@ def cmd_fora_da_ficha() -> None:
 
 
 def cmd_pr_comentario() -> None:
-    sys.stdout.write(montar_comentario_pr(_env("SUFIXO"), _env("MODELO")))
+    sys.stdout.write(montar_comentario_pr(_env("SUFIXO"), _env("MODELO"), _ci_sozinho()))
 
 
 COMANDOS = {

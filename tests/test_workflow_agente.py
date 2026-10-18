@@ -118,3 +118,94 @@ def test_caller_chama_o_workflow_com_o_gatilho_certo():
     assert doc["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
     # todo input que o chamador passa existe no workflow chamado
     assert set(job["with"]) <= set(_gatilho(_wf())["workflow_call"]["inputs"])
+    # todo segredo que o chamador repassa existe no workflow chamado
+    assert set(job["secrets"]) <= set(_gatilho(_wf())["workflow_call"]["secrets"])
+
+
+# ---------------------------------------------------------------- token do app (o CI dispara sozinho)
+
+APP_ID = 5363413
+
+
+def _passo_do_app(job):
+    achados = [p for p in job["steps"] if str(p.get("uses", "")).startswith("actions/create-github-app-token@")]
+    assert len(achados) == 1, "o token do app é gerado uma única vez, no job publicar"
+    return achados[0]
+
+
+def test_chave_do_app_e_segredo_opcional_do_workflow_call():
+    call = _gatilho(_wf())["workflow_call"]
+    assert call["secrets"]["PORTAO_APP_KEY"]["required"] is False  # sem ela, cai para o GITHUB_TOKEN
+    caller = _carregar("templates", "agente-openhands-caller.yml")["jobs"]["agente"]["secrets"]
+    assert caller["PORTAO_APP_KEY"] == "${{ secrets.PORTAO_APP_KEY }}"
+
+
+def test_token_do_app_so_existe_no_job_publicar():
+    jobs = _wf()["jobs"]
+    for nome in ("agente", "avisar"):
+        texto = yaml.safe_dump(jobs[nome])
+        assert "create-github-app-token" not in texto, nome
+        assert "PORTAO_APP_KEY" not in texto, nome
+        assert "steps.app" not in texto, nome
+    passo = _passo_do_app(jobs["publicar"])
+    assert passo["with"]["app-id"] == APP_ID
+    assert passo["with"]["private-key"] == "${{ secrets.PORTAO_APP_KEY }}"
+    assert re.search(r"@[0-9a-f]{40}$", passo["uses"])
+
+
+def test_token_do_app_tem_permissoes_minimas_e_nunca_workflows():
+    com = _passo_do_app(_wf()["jobs"]["publicar"])["with"]
+    permissoes = {k: v for k, v in com.items() if k.startswith("permission-")}
+    assert permissoes == {
+        "permission-contents": "write",
+        "permission-pull-requests": "write",
+        "permission-issues": "write",
+    }
+    assert "permission-workflows" not in com  # o app não altera .github/workflows
+
+
+def test_sem_a_chave_o_passo_do_app_e_pulado_e_o_fluxo_cai_para_o_github_token():
+    job = _wf()["jobs"]["publicar"]
+    passo = _passo_do_app(job)
+    assert passo["if"] == "env.TEM_CHAVE_APP == 'true'"
+    # a chave nunca entra no ambiente: o job só guarda se ela veio
+    assert job["env"] == {"TEM_CHAVE_APP": "${{ secrets.PORTAO_APP_KEY != '' }}"}
+    # o checkout (que fixa a credencial do push) e o gh usam o do app, com o GITHUB_TOKEN de reserva
+    usa_app = "${{ steps.app.outputs.token || github.token }}"
+    checkout_repo = [p for p in job["steps"] if p.get("with", {}).get("path") == "repo"][0]
+    assert checkout_repo["with"]["token"] == usa_app
+    abrir_pr = [p for p in job["steps"] if p.get("name", "").startswith("Commitar, empurrar")][0]
+    assert abrir_pr["env"]["GH_TOKEN"] == usa_app
+    assert abrir_pr["env"]["CI_SOZINHO"] == "${{ steps.app.outputs.token != '' }}"
+    # a mensagem do fallback continua dizendo que o CI não roda sozinho
+    assert "O CI não roda sozinho" in abrir_pr["run"]
+    assert "O CI roda sozinho" in abrir_pr["run"]
+
+
+def test_o_app_vem_antes_de_qualquer_checkout_do_job_publicar():
+    passos = _wf()["jobs"]["publicar"]["steps"]
+    posicao_app = next(i for i, p in enumerate(passos) if str(p.get("uses", "")).startswith("actions/create-github-app-token"))
+    primeiro_checkout = next(i for i, p in enumerate(passos) if str(p.get("uses", "")).startswith("actions/checkout"))
+    assert posicao_app < primeiro_checkout
+
+
+def test_texto_do_pr_muda_conforme_o_ci_dispare_sozinho():
+    sem = ag.montar_corpo_pr(7, "deepseek", "m", "u", [])
+    com = ag.montar_corpo_pr(7, "deepseek", "m", "u", [], ci_sozinho=True)
+    assert "o CI **não** roda sozinho" in sem and "fecha/reabre" in sem
+    assert "o CI roda sozinho" in com and "fecha/reabre" not in com and "GITHUB_TOKEN" not in com
+    assert escopo._RE_FICHA_NUM.search(com).group(1) == "7"  # a linha da ficha não muda
+    assert "NÃO roda sozinha" in ag.montar_comentario_pr("qwen", "m")
+    assert "o CI roda sozinho" in ag.montar_comentario_pr("qwen", "m", ci_sozinho=True)
+
+
+def test_comandos_leem_ci_sozinho_do_ambiente(monkeypatch, capsys):
+    monkeypatch.setenv("SUFIXO", "qwen")
+    monkeypatch.setenv("MODELO", "m")
+    for valor, esperado in (("true", True), ("TRUE", True), ("false", False), ("", False)):
+        monkeypatch.setenv("CI_SOZINHO", valor)
+        ag.cmd_pr_comentario()
+        assert ("o CI roda sozinho" in capsys.readouterr().out) is esperado, valor
+    monkeypatch.delenv("CI_SOZINHO")
+    ag.cmd_pr_comentario()
+    assert "NÃO roda sozinha" in capsys.readouterr().out

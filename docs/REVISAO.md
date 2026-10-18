@@ -20,6 +20,9 @@ de serviço**. Como o agente trabalha e pergunta: [`COMUNICACAO.md`](https://git
 Segundo caminho de entrada, sem fork (ver `COMUNICACAO.md`, seção 6, e `OPENHANDS.md`). O PR nasce de uma
 branch `agente/ficha-<n>-<modelo>-<run>` no próprio repositório, aberto pelo `GITHUB_TOKEN`:
 
+- **Com o app `kuligovski-portao` (segredo `PORTAO_APP_KEY` repassado pelo chamador) o CI roda sozinho** e o PR
+  nasce de `kuligovski-portao[bot]`; o passo 3 abaixo (fechar/reabrir) deixa de ser necessário, mas o diff continua
+  sendo lido antes de aprovar. Sem a chave, vale o que segue.
 - **O CI não roda sozinho** (PR criado por `GITHUB_TOKEN` não dispara workflows; no máximo fica esperando
   aprovação). Nada do funil abaixo começa antes do passo do mantenedor.
 - **O `GITHUB_TOKEN` não altera `.github/workflows/`**, e o workflow ainda descarta do patch qualquer mudança em

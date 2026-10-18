@@ -2,8 +2,9 @@ name: agente-openhands
 
 # Workflow reutilizável: um agente externo (OpenHands SDK, qualquer LLM) trabalha DENTRO do
 # GitHub Actions, disparado por um rótulo `agente:<modelo>` numa Issue-ficha, sem conta de
-# colaborador. Abre um PR que NÃO roda o CI sozinho: o mantenedor revisa o diff e fecha/reabre
-# o PR para disparar o CI.
+# colaborador. Abre um PR e, se o chamador repassar a chave do app `kuligovski-portao`
+# (PORTAO_APP_KEY), o CI dispara sozinho no PR; sem a chave, cai para o GITHUB_TOKEN, o CI NÃO
+# roda sozinho e o mantenedor fecha/reabre o PR para disparar o CI.
 #
 # Por que não existe "o resolver do OpenHands" aqui: o workflow reutilizável antigo
 # (openhands-resolver.yml, módulo openhands.resolver) foi REMOVIDO do upstream em 2026-04-23
@@ -21,8 +22,10 @@ name: agente-openhands
 #   - credenciais só por `secrets:`; nunca vão para `env` de passo que não precise delas.
 #   - o job do agente tem só `contents: read` e nenhum token de escrita; quem faz push e abre o PR
 #     é outro job, em outra máquina, que só recebe um patch (texto) e o valida.
-#   - usa o GITHUB_TOKEN (não PAT): PR criado por ele não dispara workflows e não pode alterar
-#     .github/workflows. Mudanças em .github/ também são descartadas do patch.
+#   - o token do app (se a chave veio) existe SÓ no job `publicar` (outra máquina, só recebe o patch),
+#     com permissões mínimas (contents/pull-requests/issues = write) e sem `workflows`: o app não pode
+#     alterar .github/workflows. Mudanças em .github/ também são descartadas do patch.
+#   - sem a chave, usa o GITHUB_TOKEN: PR criado por ele não dispara workflows (o CI não roda sozinho).
 
 on:
   workflow_call:
@@ -71,6 +74,9 @@ on:
         required: false
       PADROES_TOKEN:
         description: "Opcional: leitura do repositório LeoKuli/agentes-padroes (se o GITHUB_TOKEN não alcançá-lo)."
+        required: false
+      PORTAO_APP_KEY:
+        description: "Opcional: chave privada do app GitHub kuligovski-portao (App ID 5363413). Com ela o PR sai do app e o CI dispara sozinho; sem ela, cai para o GITHUB_TOKEN."
         required: false
 
 permissions:
@@ -224,7 +230,21 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+    env:
+      # Só "true"/"false": a chave em si nunca entra no ambiente do job.
+      TEM_CHAVE_APP: ${{ secrets.PORTAO_APP_KEY != '' }}
     steps:
+      - name: Gerar o token do app kuligovski-portao (só se a chave foi repassada)
+        id: app
+        if: env.TEM_CHAVE_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: 5363413
+          private-key: ${{ secrets.PORTAO_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
       - name: Baixar os scripts do padroes
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -239,6 +259,8 @@ jobs:
         with:
           path: repo
           ref: ${{ needs.agente.outputs.base_sha }}
+          # O push do ramo sai com este token: o do app (o CI dispara sozinho) ou, sem a chave, o GITHUB_TOKEN.
+          token: ${{ steps.app.outputs.token || github.token }}
 
       - name: Baixar o patch
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -289,7 +311,8 @@ jobs:
         if: steps.aplicar.outputs.vazio == 'false'
         working-directory: repo
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          CI_SOZINHO: ${{ steps.app.outputs.token != '' }}
           GH_REPO: ${{ github.repository }}
           NUMERO: ${{ needs.agente.outputs.numero }}
           SUFIXO: ${{ needs.agente.outputs.sufixo }}
@@ -332,7 +355,12 @@ jobs:
           gh issue edit "$NUMERO" --add-label "estado:revisao" || true
           gh issue edit "$NUMERO" --remove-label "estado:pronta" 2>/dev/null || true
           gh issue edit "$NUMERO" --remove-label "estado:em-andamento" 2>/dev/null || true
-          gh issue comment "$NUMERO" --body "PR aberto por agente (modelo ${MODELO}): ${url}. O CI não roda sozinho; o mantenedor revisa o diff e fecha/reabre o PR."
+          if [ "$CI_SOZINHO" = "true" ]; then
+            nota="O CI roda sozinho (PR aberto pelo app kuligovski-portao); o mantenedor revisa o diff."
+          else
+            nota="O CI não roda sozinho; o mantenedor revisa o diff e fecha/reabre o PR."
+          fi
+          gh issue comment "$NUMERO" --body "PR aberto por agente (modelo ${MODELO}): ${url}. ${nota}"
 
   # ------------------------------------------------------------------ 3. aviso quando não deu PR
   avisar:

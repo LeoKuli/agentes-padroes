@@ -79,6 +79,23 @@ workflow": <https://docs.github.com/en/actions/using-workflows/triggering-a-work
    Actions > General > Workflow permissions). Sem isso o `gh pr create` falha com 403 e a branch fica empurrada
    para abrir o PR na mão. Isso é configuração de repositório e **é o dono quem liga** (ver a seção 3).
 
+### Com o app `kuligovski-portao` o CI dispara sozinho (opcional, desde 17/10/2026)
+
+O `GITHUB_TOKEN` não dispara workflows; um **token de GitHub App** dispara. Se o chamador repassar o segredo
+`PORTAO_APP_KEY` (chave privada do app `kuligovski-portao`, App ID 5363413, instalado no repositório), o job
+`publicar` gera um token de instalação com `actions/create-github-app-token` (fixada por SHA, v3.2.0) e o usa
+no `git push`, no `gh pr create`, nos rótulos e nos comentários. Resultado: o PR nasce de `kuligovski-portao[bot]`
+e o CI roda sozinho, sem fechar/reabrir.
+
+- O token do app existe **só no job `publicar`** (outra máquina, só recebe o patch). O job do agente continua sem ele.
+- Permissões do token reduzidas a `contents`, `pull-requests` e `issues` (escrita). O app não tem `workflows`, então
+  continua sem poder alterar `.github/workflows/`; o descarte de `.github/` do patch continua valendo.
+- **Sem o segredo** (ou com o valor vazio) o job cai para o `GITHUB_TOKEN` e tudo se comporta como descrito acima:
+  o CI não roda sozinho e o mantenedor fecha/reabre o PR. A mensagem do PR e da ficha diz qual dos dois casos ocorreu.
+- Contrapartida: como o CI agora roda **antes** de uma pessoa ler o diff, o que o agente pôs em arquivos permitidos
+  (testes, por exemplo) executa no CI do repositório. Por isso a ficha deve listar só os arquivos necessários e o CI
+  dos `pull_request` não deve receber segredos além dos de leitura.
+
 ## 2. Como o workflow funciona
 
 ```

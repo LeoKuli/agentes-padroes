@@ -6,7 +6,8 @@
 #   3. Rótulos: ./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:qwen
 #
 # Uso: na Issue-ficha (rótulo `ficha`), o mantenedor aplica `agente:deepseek` (ou `agente:qwen`).
-# O agente abre um PR que NÃO roda o CI sozinho; revise o diff e feche/reabra o PR.
+# O agente abre um PR. Com o segredo PORTAO_APP_KEY (app kuligovski-portao) o CI roda sozinho; sem ele
+# o PR sai com o GITHUB_TOKEN, o CI NÃO roda sozinho e é preciso fechar/reabrir o PR.
 name: agente
 
 on:
@@ -31,6 +32,9 @@ jobs:
       timeout_minutes: 45
     secrets:
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      # Chave do app GitHub `kuligovski-portao` (App ID 5363413): com ela o PR sai do app e o CI
+      # dispara sozinho. Sem o segredo no repositório o valor vai vazio e o fluxo cai para o GITHUB_TOKEN.
+      PORTAO_APP_KEY: ${{ secrets.PORTAO_APP_KEY }}
       # Provedor direto (sem OpenRouter): descomente e crie o segredo LLM_BASE_URL.
       # LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
       # Se o padroes (privado) não for alcançável pelo GITHUB_TOKEN:
