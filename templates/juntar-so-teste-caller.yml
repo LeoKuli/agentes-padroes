@@ -5,8 +5,10 @@
 #
 # Pré-requisitos (uma vez por repositório):
 #   1. Segredo PORTAO_APP_KEY (chave do app GitHub `kuligovski-portao`, App ID 5363413) em Actions.
-#   2. Proteção do branch principal com `bypass_pull_request_allowances.apps: ["kuligovski-portao"]`, para o app
-#      passar por cima SÓ da revisão de code owner. Sem isso a junção é recusada e o script cai para o aviso
+#   2. A revisão de code owner mora no ruleset `revisao-obrigatoria-do-dono`, que deixa o app `kuligovski-portao`
+#      (e o papel Admin) passar por cima SÓ dela. Os checks obrigatórios, a branch atualizada e a resolução de
+#      conversas continuam na proteção clássica, que o app NÃO contorna. (A proteção clássica devolve erro 500 para
+#      `bypass_pull_request_allowances` em repositório pessoal.) Se a junção for recusada, o script cai para o aviso
 #      "pronto para juntar" + rótulo `estado:pode-juntar`.
 #
 # Quando roda:

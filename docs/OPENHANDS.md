@@ -104,7 +104,9 @@ juntam por squash o PR do agente que cumpre TODAS as regras: autor `kuligovski-p
 teste e está nos permitidos; todos os checks da cabeça verdes (pendente, falho ou pulado reprova; check de mutação
 tem de estar verde; checks obrigatórios da proteção têm de existir); PR mergeable. Qualquer dúvida ou falha de
 medição = não junta (NÃO MEDIDO). `--dry-run` só decide e mostra. Passar por cima da revisão obrigatória exige o
-app em `bypass_pull_request_allowances.apps` da proteção do branch; se a proteção não deixar, o script comenta
+app como bypass (tipo Integration) do ruleset `revisao-obrigatoria-do-dono`, que carrega a revisão de code owner;
+a proteção clássica de repositório pessoal devolve erro 500 para `bypass_pull_request_allowances`. Os checks
+obrigatórios ficam na proteção clássica, que o app não contorna. Se a junção for recusada, o script comenta
 "pronto para juntar" e põe o rótulo `estado:pode-juntar` para uma pessoa juntar com um comando.
 
 ## 2. Como o workflow funciona

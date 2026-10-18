@@ -12,9 +12,11 @@ name: juntar-so-teste
 #   5. o PR é mergeable.
 # Falha de medição devolve NÃO MEDIDO (o job fica vermelho) e não junta.
 #
-# Passar por cima da revisão obrigatória de code owner: o app `kuligovski-portao` precisa estar em
-# `bypass_pull_request_allowances.apps` da proteção da branch (só ele; ninguém mais é afrouxado). Sem isso a
-# junção é recusada e o script cai para: comentar "pronto para juntar" + rótulo `estado:pode-juntar`.
+# Passar por cima da revisão obrigatória de code owner: o app `kuligovski-portao` precisa ser bypass (tipo
+# Integration) do ruleset que carrega essa revisão (`revisao-obrigatoria-do-dono`); em repositório pessoal a
+# proteção clássica não aceita `bypass_pull_request_allowances` (erro 500). Os checks obrigatórios ficam na
+# proteção clássica e o app NÃO os contorna. Sem o bypass a junção é recusada e o script cai para: comentar
+# "pronto para juntar" + rótulo `estado:pode-juntar`.
 #
 # Uso no repositório que chama (veja templates/juntar-so-teste-caller.yml):
 #   on: { workflow_dispatch: {...}, workflow_run: {...}, schedule: [...] }
