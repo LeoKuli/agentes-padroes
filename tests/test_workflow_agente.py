@@ -209,3 +209,15 @@ def test_comandos_leem_ci_sozinho_do_ambiente(monkeypatch, capsys):
     monkeypatch.delenv("CI_SOZINHO")
     ag.cmd_pr_comentario()
     assert "NÃO roda sozinha" in capsys.readouterr().out
+
+
+def test_a_instalacao_do_sdk_usa_o_arquivo_de_restricoes_com_litellm_e_mcp_fixos():
+    """18/10/2026: litellm 1.106.0 + mcp 1.30.0 quebrou o agente (ImportError CacheableResult)."""
+    passos = {p.get("name", ""): p for p in _wf()["jobs"]["agente"]["steps"]}
+    run = passos["Instalar o OpenHands SDK (versão fixa)"]["run"]
+    linha = next(l for l in run.splitlines() if "pip install" in l and not l.lstrip().startswith("#"))
+    assert "-c _padroes/constraints/agente-openhands.txt" in linha
+    restricoes = (RAIZ / "constraints" / "agente-openhands.txt").read_text(encoding="utf-8")
+    fixos = {l.split("==")[0]: l.split("==")[1] for l in restricoes.splitlines() if "==" in l and not l.startswith("#")}
+    assert set(fixos) == {"litellm", "mcp"}
+    assert all(re.fullmatch(r"\d+\.\d+\.\d+", v) for v in fixos.values())

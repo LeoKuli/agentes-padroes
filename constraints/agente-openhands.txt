@@ -1,0 +1,13 @@
+# Restrições do pip para o job do agente (workflows/agente-openhands.yml), junto com openhands-sdk/tools 1.54.0.
+#
+# Por quê: o SDK pede só `litellm>=1.93.0`; o `litellm` e o `mcp` entravam soltos. Em 18/10/2026 saiu o
+# litellm 1.106.0, que importa `CacheableResult` de `mcp.types` (inexistente no mcp 1.30.0) e derrubou o
+# agente em `conversa.run()` ("ImportError: cannot import name 'CacheableResult'").
+#
+# Estas são as versões que o pip resolvia em 17/10/2026 (quando o agente rodou): obtidas reproduzindo a
+# resolução com `pip install --uploaded-prior-to 2026-10-17T20:46:52Z openhands-sdk==1.54.0 openhands-tools==1.54.0`
+# (venv Python 3.12; o log do job usa `--quiet` e não registra versões). `import openhands.sdk, litellm` passa.
+#
+# Ao subir `sdk_version`, revise e troque estas versões junto, nunca soltas.
+litellm==1.105.1
+mcp==1.30.0

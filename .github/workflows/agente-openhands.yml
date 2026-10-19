@@ -156,7 +156,8 @@ jobs:
             echo "::error::sdk_version precisa ser exata (ex.: 1.54.0); recebi '$SDK_VERSION'."
             exit 1
           fi
-          python -m pip install --quiet "openhands-sdk==${SDK_VERSION}" "openhands-tools==${SDK_VERSION}"
+          # -c: litellm e mcp fixos (constraints/agente-openhands.txt); soltos, uma versão nova quebrou o par em 18/10.
+          python -m pip install --quiet -c _padroes/constraints/agente-openhands.txt "openhands-sdk==${SDK_VERSION}" "openhands-tools==${SDK_VERSION}"
 
       - name: Rodar o agente
         working-directory: work
