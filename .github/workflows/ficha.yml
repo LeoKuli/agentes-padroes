@@ -21,10 +21,10 @@ on:
         default: "#[0-9]+|[A-Z][A-Z0-9]*-[0-9]+"
       runner:
         description: >-
-          Onde roda o job, em JSON (ex.: '"ubuntu-latest"' ou '["self-hosted","bancada-pr"]').
+          Onde roda o job, em JSON (ex.: '"ubuntu-24.04"' ou '["self-hosted","bancada-pr"]').
           Só o runner isolado efêmero (bancada-pr) ou o do GitHub; nunca um runner privilegiado.
         type: string
-        default: '"ubuntu-latest"'
+        default: '"ubuntu-24.04"'
 
 permissions:
   contents: read

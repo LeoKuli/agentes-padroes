@@ -24,7 +24,7 @@ def _call():
 def test_entradas_combinadas():
     entradas = _call()["inputs"]
     assert entradas["comando_teste"]["required"] is True
-    assert json.loads(entradas["runner"]["default"]) == "ubuntu-latest"
+    assert json.loads(entradas["runner"]["default"]) == "ubuntu-24.04"
     assert not entradas["preparar"].get("required")
     assert entradas["preparar"]["default"] == ""
 

@@ -48,11 +48,11 @@ on:
         default: 45
       runner:
         description: >-
-          Onde roda o job do AGENTE, em JSON (ex.: '"ubuntu-latest"' ou '["self-hosted","bancada-pr"]').
+          Onde roda o job do AGENTE, em JSON (ex.: '"ubuntu-24.04"' ou '["self-hosted","bancada-pr"]').
           Só o runner isolado efêmero (bancada-pr) ou o do GitHub; nunca um runner privilegiado.
           O job que publica o PR (token com escrita) roda sempre no GitHub.
         type: string
-        default: '"ubuntu-latest"'
+        default: '"ubuntu-24.04"'
       base_branch:
         description: "Branch-base do PR. Vazio = branch padrão do repositório."
         type: string
@@ -224,7 +224,7 @@ jobs:
   publicar:
     needs: agente
     if: needs.agente.outputs.tem_mudancas == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
@@ -371,7 +371,7 @@ jobs:
       (needs.agente.result != 'success' ||
        needs.agente.outputs.tem_mudancas != 'true' ||
        needs.publicar.result != 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       issues: write

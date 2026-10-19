@@ -55,9 +55,9 @@ def test_so_o_agente_escolhe_o_runner_e_o_padrao_e_o_github():
         if nome == "agente":
             assert job["runs-on"] == "${{ fromJSON(inputs.runner) }}"
         else:  # publicar/avisar têm token com escrita: sempre no GitHub, nunca na bancada
-            assert job["runs-on"] == "ubuntu-latest", nome
+            assert job["runs-on"] == "ubuntu-24.04", nome
     entrada = _gatilho(wf)["workflow_call"]["inputs"]["runner"]
-    assert json.loads(entrada["default"]) == "ubuntu-latest"
+    assert json.loads(entrada["default"]) == "ubuntu-24.04"
 
 
 def test_quem_roda_o_agente_nao_escreve_e_quem_escreve_nao_roda_o_agente():

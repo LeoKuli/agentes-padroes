@@ -46,11 +46,11 @@ on:
         default: "OWNER,MEMBER,COLLABORATOR"
       runner:
         description: >-
-          Onde roda o job, em JSON (ex.: '"ubuntu-latest"' ou '["self-hosted","bancada-pr"]').
+          Onde roda o job, em JSON (ex.: '"ubuntu-24.04"' ou '["self-hosted","bancada-pr"]').
           Só o runner isolado efêmero (bancada-pr) ou o do GitHub; nunca um runner privilegiado.
           Quem repassa PADROES_TOKEN (credencial além do GITHUB_TOKEN) deixa o padrão: no GitHub.
         type: string
-        default: '"ubuntu-latest"'
+        default: '"ubuntu-24.04"'
     secrets:
       PADROES_TOKEN:
         description: "Opcional: token de leitura do repositório LeoKuli/agentes-padroes (se o GITHUB_TOKEN não alcançá-lo)."

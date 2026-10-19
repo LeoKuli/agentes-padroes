@@ -21,7 +21,7 @@ name: mutacao-ficha
 #       with:
 #         comando_teste: python -B -m unittest discover -s tests   # o mesmo comando do CI
 #         preparar: pip install -r requirements.txt                 # opcional
-#         runner: '"ubuntu-latest"'                                  # JSON; ex.: '["self-hosted","bancada"]'
+#         runner: '"ubuntu-24.04"'                                  # JSON; ex.: '["self-hosted","bancada"]'
 #
 # Segurança: o comando de teste executa o código do PR. O job tem token só de leitura, o checkout não
 # persiste credencial e o comando roda SEM GH_TOKEN/GITHUB_TOKEN no ambiente. O corpo do PR e da Issue
@@ -40,9 +40,9 @@ on:
         type: string
         default: ""
       runner:
-        description: 'Runner em JSON (ex.: "ubuntu-latest" ou ["self-hosted","bancada"]).'
+        description: 'Runner em JSON (ex.: "ubuntu-24.04" ou ["self-hosted","bancada"]).'
         type: string
-        default: '"ubuntu-latest"'
+        default: '"ubuntu-24.04"'
       timeout_minutes:
         description: "Tempo máximo do job inteiro, em minutos."
         type: number

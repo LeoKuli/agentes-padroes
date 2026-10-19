@@ -32,7 +32,7 @@ def _entradas(doc):
 def test_a_entrada_runner_existe_e_o_padrao_e_o_github(arquivo):
     entrada = _entradas(_wf(arquivo))["runner"]
     assert entrada["type"] == "string"
-    assert json.loads(entrada["default"]) == "ubuntu-latest"
+    assert json.loads(entrada["default"]) == "ubuntu-24.04"
 
 
 @pytest.mark.parametrize("arquivo", sorted(WORKFLOWS))
@@ -61,3 +61,11 @@ def test_a_unica_credencial_alem_do_github_token_e_o_padroes_token_do_escopo():
             assert outras == {"token: ${{ secrets.PADROES_TOKEN || github.token }}"}
         else:
             assert not outras, (arquivo, outras)
+
+
+def test_o_que_fica_no_github_fixa_o_ubuntu_24_04_e_nunca_usa_o_rotulo_movel():
+    """`ubuntu-latest` migrou para o Ubuntu 26 em 19/10/2026: o que fica no GitHub fixa a versão."""
+    for arquivo in sorted(p.name for p in (RAIZ / ".github" / "workflows").glob("*.yml")):
+        assert "ubuntu-latest" not in (RAIZ / ".github" / "workflows" / arquivo).read_text(encoding="utf-8"), arquivo
+    jobs = _wf("juntar-so-teste.yml")["jobs"]
+    assert {j["runs-on"] for j in jobs.values()} == {"ubuntu-24.04"}

@@ -127,7 +127,7 @@ Travas duras (todas testadas em `tests/test_workflow_agente.py` e `tests/test_ag
 
 | Trava | Onde |
 |---|---|
-| Só `ubuntu-latest` | todos os jobs |
+| Só `ubuntu-24.04` | todos os jobs |
 | Só roda se: Issue com rótulo `ficha` **e** rótulo recém-aplicado começa com `agente:` **e** `github.event.sender.login == maintainer` (padrão `LeoKuli`); senão o job é pulado | `if:` do job `agente` + repetido em código no passo "Conferir as travas" |
 | Ficha aberta por alguém sem papel confiável (`OWNER,MEMBER,COLLABORATOR`) não é entregue ao modelo | `autores_ficha` |
 | Modelo vem da entrada `modelos` (JSON sufixo→id); sufixo desconhecido **falha** com a lista dos conhecidos | `resolver_modelo` |
