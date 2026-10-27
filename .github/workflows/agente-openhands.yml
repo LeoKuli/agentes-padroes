@@ -87,7 +87,7 @@ permissions:
 # execução inteira já entrou no grupo: com um grupo único por ficha, esse evento "pulado" chegava logo
 # depois do evento real, ainda na fila, e o GitHub cancelava o real (cancel-in-progress: false só poupa
 # o que JÁ está rodando, nunca o que está pendente). Medido em 17 e 21/10/2026: 36 execuções reais
-# canceladas em 1 segundo, 0 em marketing. Por isso o evento que não é `agente:*` ganha um grupo só
+# canceladas em 1 segundo (de 44 que não deram PR, em 60 reais; no marketing, 9 de 9 e nenhum PR). Por isso o evento que não é `agente:*` ganha um grupo só
 # dele (run_id) e nunca desloca ninguém. O chamador também filtra (templates/agente-openhands-caller.yml).
 concurrency:
   group: ${{ startsWith(github.event.label.name, 'agente:') && format('agente-{0}-{1}', github.repository, github.event.issue.number) || format('agente-ignorado-{0}', github.run_id) }}
