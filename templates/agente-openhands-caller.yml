@@ -3,9 +3,9 @@
 #   1. Segredo LLM_API_KEY em Settings > Secrets and variables > Actions (o dono cria, com teto de gasto).
 #   2. Settings > Actions > General > Workflow permissions: "Allow GitHub Actions to create and
 #      approve pull requests" ligado (sem isso o PR não abre).
-#   3. Rótulos: ./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:qwen
+#   3. Rótulos: ./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:deepseek-flash agente:qwen agente:kimi agente:haiku
 #
-# Uso: na Issue-ficha (rótulo `ficha`), o mantenedor aplica `agente:deepseek` (ou `agente:qwen`).
+# Uso: na Issue-ficha (rótulo `ficha`), o mantenedor aplica `agente:deepseek-flash` (ou outro do mapa abaixo).
 # O agente abre um PR. Com o segredo PORTAO_APP_KEY (app kuligovski-portao) o CI roda sozinho; sem ele
 # o PR sai com o GITHUB_TOKEN, o CI NÃO roda sozinho e é preciso fechar/reabrir o PR.
 name: agente
@@ -22,12 +22,15 @@ permissions:
 
 jobs:
   agente:
+    # Só o rótulo `agente:*` chama o workflow. Sem este filtro, cada rótulo aplicado à ficha (ficha, nivel-N,
+    # estado:*) abre uma execução que entra na fila da ficha e pode cancelar a do agente que ainda não começou.
+    if: startsWith(github.event.label.name, 'agente:')
     # Fixe numa versão (tag ou SHA) do padroes depois de revisar a mudança; nunca @main.
     uses: LeoKuli/agentes-padroes/.github/workflows/agente-openhands.yml@main
     with:
       maintainer: LeoKuli
       # Rótulo `agente:<sufixo>` -> modelo (ids no formato LiteLLM; OpenRouter: openrouter/<provedor>/<modelo>).
-      modelos: '{"deepseek":"openrouter/deepseek/deepseek-chat","qwen":"openrouter/qwen/qwen3-coder"}'
+      modelos: '{"deepseek":"openrouter/deepseek/deepseek-v4-pro","deepseek-flash":"openrouter/deepseek/deepseek-v4.1-flash","qwen":"openrouter/qwen/qwen3-coder-next","kimi":"openrouter/moonshotai/kimi-k2.7-code","haiku":"openrouter/anthropic/claude-haiku-5.5"}'
       max_iterations: 50
       timeout_minutes: 45
     secrets:

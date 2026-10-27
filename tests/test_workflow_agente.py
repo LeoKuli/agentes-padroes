@@ -14,6 +14,9 @@ import escopo  # noqa: E402
 
 yaml = pytest.importorskip("yaml")
 
+# Rótulos `agente:<sufixo>` que os repositórios usam; os ids vêm da lista pública do OpenRouter (conferidos em 26/10/2026).
+MODELOS_DA_CASA = {"deepseek", "deepseek-flash", "qwen", "kimi", "haiku"}
+
 
 def _carregar(*partes):
     return yaml.safe_load(RAIZ.joinpath(*partes).read_text(encoding="utf-8"))
@@ -31,7 +34,7 @@ def test_workflow_e_reutilizavel_com_as_entradas_combinadas():
     call = _gatilho(_wf())["workflow_call"]
     assert {"maintainer", "modelos", "max_iterations", "timeout_minutes", "base_branch", "sdk_version"} <= set(call["inputs"])
     assert call["inputs"]["maintainer"]["default"] == "LeoKuli"
-    assert set(json.loads(call["inputs"]["modelos"]["default"])) == {"deepseek", "qwen"}
+    assert set(json.loads(call["inputs"]["modelos"]["default"])) == MODELOS_DA_CASA
     assert call["secrets"]["LLM_API_KEY"]["required"] is True
     assert call["secrets"]["LLM_BASE_URL"]["required"] is False
     assert not [n for n in call["secrets"] if "PAT" in n.replace("PADROES", "")], "nenhum PAT"
@@ -113,7 +116,8 @@ def test_caller_chama_o_workflow_com_o_gatilho_certo():
     assert _gatilho(doc) == {"issues": {"types": ["labeled"]}}
     job = doc["jobs"]["agente"]
     assert job["uses"].startswith("LeoKuli/agentes-padroes/.github/workflows/agente-openhands.yml@")
-    assert set(json.loads(job["with"]["modelos"])) == {"deepseek", "qwen"}
+    assert set(json.loads(job["with"]["modelos"])) == MODELOS_DA_CASA
+    assert json.loads(job["with"]["modelos"]) == json.loads(_gatilho(_wf())["workflow_call"]["inputs"]["modelos"]["default"])
     assert "LLM_API_KEY" in job["secrets"]
     assert doc["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
     # todo input que o chamador passa existe no workflow chamado
@@ -221,3 +225,22 @@ def test_a_instalacao_do_sdk_usa_o_arquivo_de_restricoes_com_litellm_e_mcp_fixos
     fixos = {l.split("==")[0]: l.split("==")[1] for l in restricoes.splitlines() if "==" in l and not l.startswith("#")}
     assert set(fixos) == {"litellm", "mcp"}
     assert all(re.fullmatch(r"\d+\.\d+\.\d+", v) for v in fixos.values())
+
+
+# ---------------------------------------------------------------- fila por ficha (36 execuções reais canceladas em 17 e 21/10)
+
+
+def test_so_o_rotulo_do_agente_entra_na_fila_da_ficha():
+    """Cada rótulo aplicado à ficha abre uma execução; se todas dividissem o grupo, a 'pulada' cancelava a real
+    ainda pendente. Só `agente:*` divide o grupo da ficha; qualquer outro evento ganha um grupo só dele."""
+    conc = _wf()["concurrency"]
+    assert conc["cancel-in-progress"] is False
+    grupo = " ".join(str(conc["group"]).split())
+    assert grupo.startswith("${{ startsWith(github.event.label.name, 'agente:') &&")
+    assert "github.event.issue.number" in grupo  # a fila continua por ficha
+    assert "github.run_id" in grupo  # o resto não divide grupo com ninguém
+
+
+def test_o_caller_nao_chama_o_workflow_para_rotulo_que_nao_e_do_agente():
+    job = _carregar("templates", "agente-openhands-caller.yml")["jobs"]["agente"]
+    assert job["if"] == "startsWith(github.event.label.name, 'agente:')"
