@@ -37,7 +37,7 @@ on:
       modelos:
         description: 'JSON {"sufixo-do-rótulo": "id-do-modelo-no-LiteLLM"}. Sufixo desconhecido falha.'
         type: string
-        default: '{"deepseek":"openrouter/deepseek/deepseek-chat","qwen":"openrouter/qwen/qwen3-coder"}'
+        default: '{"deepseek":"openrouter/deepseek/deepseek-v4-pro","deepseek-flash":"openrouter/deepseek/deepseek-v4.1-flash","qwen":"openrouter/qwen/qwen3-coder-next","kimi":"openrouter/moonshotai/kimi-k2.7-code","haiku":"openrouter/anthropic/claude-haiku-5.5"}'
       max_iterations:
         description: "Máximo de iterações do agente por execução."
         type: number
@@ -82,8 +82,15 @@ on:
 permissions:
   contents: read
 
+# Fila por ficha, SÓ para o evento que pode rodar o agente (rótulo `agente:*`). Os outros rótulos aplicados
+# à mesma ficha (ficha, nivel-N, estado:*) também chamam este workflow e o job `agente` é pulado, mas a
+# execução inteira já entrou no grupo: com um grupo único por ficha, esse evento "pulado" chegava logo
+# depois do evento real, ainda na fila, e o GitHub cancelava o real (cancel-in-progress: false só poupa
+# o que JÁ está rodando, nunca o que está pendente). Medido em 17 e 21/10/2026: 36 execuções reais
+# canceladas em 1 segundo (de 44 que não deram PR, em 60 reais; no marketing, 9 de 9 e nenhum PR). Por isso o evento que não é `agente:*` ganha um grupo só
+# dele (run_id) e nunca desloca ninguém. O chamador também filtra (templates/agente-openhands-caller.yml).
 concurrency:
-  group: agente-${{ github.repository }}-${{ github.event.issue.number }}
+  group: ${{ startsWith(github.event.label.name, 'agente:') && format('agente-{0}-{1}', github.repository, github.event.issue.number) || format('agente-ignorado-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:

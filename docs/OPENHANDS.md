@@ -142,9 +142,11 @@ Travas duras (todas testadas em `tests/test_workflow_agente.py` e `tests/test_ag
 `LLM_API_KEY` (o processo dele a usa). Por isso a chave **precisa ter teto de gasto** e valer só para esse uso.
 Tirar a chave do ambiente reduz vazamento acidental em log, não é isolamento.
 
-Modelos: o rótulo `agente:deepseek` usa `openrouter/deepseek/deepseek-chat`; `agente:qwen` usa
-`openrouter/qwen/qwen3-coder` (ids no formato LiteLLM, que o SDK usa). Confira o id exato na página do modelo
-no provedor antes do primeiro uso; mude o mapa `modelos` no chamador.
+Modelos (ids no formato LiteLLM, que o SDK usa; todos conferidos na lista pública do OpenRouter em 26/10/2026):
+`agente:deepseek` = `openrouter/deepseek/deepseek-v4-pro`, `agente:deepseek-flash` = `openrouter/deepseek/deepseek-v4.1-flash`,
+`agente:qwen` = `openrouter/qwen/qwen3-coder-next`, `agente:kimi` = `openrouter/moonshotai/kimi-k2.7-code`,
+`agente:haiku` = `openrouter/anthropic/claude-haiku-5.5`. Confira o id exato na página do modelo no provedor
+antes do primeiro uso; mude o mapa `modelos` no chamador.
 
 ## 3. Passos do dono (uma vez, e em cada repositório)
 
@@ -161,10 +163,10 @@ Estes passos são **seus**; nenhum agente cria conta, chave nem segredo.
 5. No `LeoKuli/agentes-padroes` (privado): **Settings > Actions > General > Access**, permita o uso por repositórios
    privados do mesmo dono. Se preferir não, crie o segredo `PADROES_TOKEN` (leitura só do `padroes`) em cada
    repositório e descomente a linha no chamador.
-6. **Rótulos:** `./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:qwen`.
+6. **Rótulos:** `./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:deepseek-flash agente:qwen agente:kimi agente:haiku`.
 7. Copie `templates/agente-openhands-caller.yml` para `.github/workflows/agente.yml` e troque `@main` por um SHA
    do `padroes` depois de revisar. Esse arquivo passa pelo mesmo cuidado de qualquer mudança em `.github/`.
-8. **Primeiro uso:** numa ficha pequena e de baixo risco, aplique `agente:deepseek` e acompanhe a aba Actions.
+8. **Primeiro uso:** numa ficha pequena e de baixo risco, aplique `agente:deepseek-flash` e acompanhe a aba Actions.
 
 ### Custo
 
@@ -189,7 +191,23 @@ Estes passos são **seus**; nenhum agente cria conta, chave nem segredo.
 4. Se não aprovar: comente o que corrigir e feche. Não há `push` do agente; correção é nova rodada (remova e
    reaplique o rótulo, de preferência depois de melhorar a ficha) ou ficha nova.
 
-## 5. Limites conhecidos
+## 5. Falhas medidas e o que cada uma pede (17 a 21/10/2026)
+
+Levantamento de todas as execuções reais (job `agente` não pulado) nos quatro repositórios que usam o fluxo:
+
+| Causa | Execuções | Conserto |
+|---|---|---|
+| Cancelada em 1 s por evento "pulado" da mesma ficha (fila `concurrency` única por ficha) | 36 | grupo só para `agente:*` + `if` no chamador (esta versão) |
+| `litellm`/`mcp` soltos (ImportError `CacheableResult`) | 1 | `constraints/agente-openhands.txt` (13f3527) |
+| `repositório LeoKuli/padroes não encontrado` (nome antigo) | 1 | nome `agentes-padroes` |
+| `rsync: command not found` no runner da bancada | 1 | runner passou a ter `rsync` |
+| 45 min sem terminar (timeout) ou cancelada à mão, no passo "Rodar o agente" | 3 | NÃO PROVADO: log do job ausente; suspeita: o agente rodando o portão inteiro (até 25 min por rodada) |
+| Falha sem log legível (agente 20 min; publicar) | 2 | NÃO MEDIDO: logs do job expirados no GitHub |
+
+Lição: o grupo de concorrência de um workflow reutilizável vale para a execução inteira, mesmo quando todos
+os jobs dela são pulados pelo `if`. Filtre o evento no chamador e dê grupo próprio ao que não é para rodar.
+
+## 6. Limites conhecidos
 
 - O agente não vê `.git` e não roda o comando de aceite com o CI do repositório; ele pode rodar o comando que a
   ficha pede dentro da sandbox do runner. Quem mede de verdade é o CI depois da reabertura.
