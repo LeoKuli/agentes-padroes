@@ -10,6 +10,8 @@ the issue text is untrusted):
     pr-corpo build the pull request body
     pr-comentario  build the comment posted on the pull request
     fora-da-ficha  list the patched paths the ficha does not allow (NUL-separated, stdin -> stdout)
+    uso-chave      read how much the OpenRouter key has spent so far (GET /api/v1/key), for the cost delta
+    registro-custo build the issue comment with the measured cost of this run (machine-readable marker)
 
 Only `rodar` needs the OpenHands SDK; the others use the standard library so the tests
 can run anywhere. Failures exit non-zero with a `::error::` annotation in pt-BR.
@@ -203,6 +205,46 @@ def montar_comentario_pr(sufixo: str, modelo: str, ci_sozinho: bool = False) -> 
     )
 
 
+# ---------------------------------------------------------------- measured cost
+
+NAO_MEDIDO = "NÃO MEDIDO"
+URL_CHAVE_OPENROUTER = "https://openrouter.ai/api/v1/key"
+MARCA_CUSTO = "custo-agente v1"
+
+
+def uso_da_chave(resposta: dict) -> float | None:
+    """`data.usage` of GET /api/v1/key: dollars the key has spent so far. Anything else is None (NÃO MEDIDO)."""
+    dados = resposta.get("data") if isinstance(resposta, dict) else None
+    uso = dados.get("usage") if isinstance(dados, dict) else None
+    if isinstance(uso, bool) or not isinstance(uso, (int, float)) or uso < 0:
+        return None
+    return float(uso)
+
+
+def custo_medido(antes: str, depois: str) -> str:
+    """Cost of the run = key usage after minus before, in dollars with 4 decimals; any gap is NÃO MEDIDO, never zero."""
+    try:
+        a, d = float(antes), float(depois)
+    except ValueError:
+        return NAO_MEDIDO
+    if d < a:
+        return NAO_MEDIDO
+    return f"{d - a:.4f}"
+
+
+def montar_registro_custo(registro: dict) -> str:
+    """Issue comment: one human line plus a JSON marker that the weekly report parses."""
+    custo = registro.get("usd", NAO_MEDIDO)
+    valor = f"US$ {custo}" if custo != NAO_MEDIDO else NAO_MEDIDO
+    linha = (
+        f"Custo medido desta execução no OpenRouter: **{valor}** · modelo `{registro.get('modelo', '')}` · "
+        f"resultado: {registro.get('resultado', '')} · {registro.get('inicio', '')} a {registro.get('fim', '')} (UTC). "
+        "Medido pela diferença do gasto da chave antes e depois; execuções simultâneas na mesma chave se misturam."
+    )
+    marca = json.dumps(registro, ensure_ascii=False, sort_keys=True)
+    return f"{linha}\n\n<!-- {MARCA_CUSTO} {marca} -->\n"
+
+
 # ---------------------------------------------------------------- command line
 
 
@@ -311,7 +353,43 @@ def cmd_pr_comentario() -> None:
     sys.stdout.write(montar_comentario_pr(_env("SUFIXO"), _env("MODELO"), _ci_sozinho()))
 
 
+def cmd_uso_chave() -> None:
+    """Write `uso=<dollars>` (or NÃO MEDIDO) to GITHUB_OUTPUT. The key is used once and never printed."""
+    import urllib.request
+
+    chave = os.environ.pop("LLM_API_KEY", "")
+    base_url = _env("LLM_BASE_URL")
+    valor = NAO_MEDIDO
+    if chave and (not base_url or "openrouter.ai" in base_url):
+        pedido = urllib.request.Request(URL_CHAVE_OPENROUTER, headers={"Authorization": f"Bearer {chave}"})
+        try:
+            with urllib.request.urlopen(pedido, timeout=20) as resposta:  # noqa: S310 - URL fixa
+                uso = uso_da_chave(json.loads(resposta.read().decode("utf-8")))
+            if uso is not None:
+                valor = f"{uso:.6f}"
+        except Exception as e:  # noqa: BLE001 - medição que falha é NÃO MEDIDO, nunca zero
+            print(f"Uso da chave: {NAO_MEDIDO} ({type(e).__name__})")
+    _saida("uso", valor)
+    print(f"Uso da chave até agora: {valor}")
+
+
+def cmd_registro_custo() -> None:
+    registro = {
+        "repo": _env("GITHUB_REPOSITORY"),
+        "ficha": _env("NUMERO"),
+        "modelo": _env("MODELO"),
+        "resultado": _env("RESULTADO"),
+        "inicio": _env("INICIO"),
+        "fim": _env("FIM"),
+        "run": _env("RUN_ID"),
+        "usd": custo_medido(_env("USO_ANTES"), _env("USO_DEPOIS")),
+    }
+    sys.stdout.write(montar_registro_custo(registro))
+
+
 COMANDOS = {
+    "uso-chave": cmd_uso_chave,
+    "registro-custo": cmd_registro_custo,
     "modelo": cmd_modelo,
     "prompt": cmd_prompt,
     "rodar": cmd_rodar,

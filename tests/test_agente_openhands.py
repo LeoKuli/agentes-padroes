@@ -1,5 +1,6 @@
 """Unit tests for scripts/agente_openhands.py (the guards and the prompt, no SDK needed)."""
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -172,3 +173,43 @@ def test_corpo_do_pr_traz_o_custo_e_o_que_saiu_da_ficha():
     assert "`tatus --short`" in corpo and "FORA dos permitidos" in corpo
     sem = ag.montar_corpo_pr(3, "kimi", "m", "https://r", [])
     assert "NÃO MEDIDO" in sem and "FORA dos permitidos" not in sem
+
+
+# ---------------------------------------------------------------- custo medido (28/10/2026)
+
+
+def test_uso_da_chave_le_o_gasto_do_openrouter():
+    assert ag.uso_da_chave({"data": {"usage": 7.19, "limit": 50}}) == 7.19
+    assert ag.uso_da_chave({"data": {"usage": 0}}) == 0.0
+
+
+def test_uso_da_chave_sem_numero_e_nao_medido():
+    for resposta in ({}, {"data": {}}, {"data": {"usage": None}}, {"data": {"usage": "7"}}, {"data": {"usage": True}}, {"data": {"usage": -1}}, []):
+        assert ag.uso_da_chave(resposta) is None
+
+
+def test_custo_medido_e_a_diferenca_do_gasto():
+    assert ag.custo_medido("7.100000", "7.193400") == "0.0934"
+    assert ag.custo_medido("2", "2") == "0.0000"
+
+
+def test_custo_sem_medicao_nunca_vira_zero():
+    assert ag.custo_medido(ag.NAO_MEDIDO, "7.19") == ag.NAO_MEDIDO
+    assert ag.custo_medido("7.19", "") == ag.NAO_MEDIDO
+    assert ag.custo_medido("7.19", "7.10") == ag.NAO_MEDIDO
+
+
+def test_registro_de_custo_tem_marca_legivel_por_maquina():
+    texto = ag.montar_registro_custo(
+        {"repo": "LeoKuli/x", "ficha": "62", "modelo": "m", "resultado": "pr", "inicio": "a", "fim": "b", "run": "1", "usd": "0.0934"}
+    )
+    assert "US$ 0.0934" in texto
+    marca = re.search(r"<!-- custo-agente v1 (\{.*\}) -->", texto)
+    assert marca is not None
+    assert json.loads(marca.group(1))["usd"] == "0.0934"
+
+
+def test_registro_sem_medicao_diz_nao_medido():
+    texto = ag.montar_registro_custo({"usd": ag.NAO_MEDIDO, "modelo": "m"})
+    assert "**NÃO MEDIDO**" in texto
+    assert "US$" not in texto.split("\n")[0]

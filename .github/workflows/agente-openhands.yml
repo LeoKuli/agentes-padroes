@@ -113,6 +113,10 @@ jobs:
       sufixo: ${{ steps.modelo.outputs.sufixo }}
       modelo: ${{ steps.modelo.outputs.modelo }}
       numero: ${{ steps.modelo.outputs.numero }}
+      uso_antes: ${{ steps.uso_antes.outputs.uso }}
+      uso_depois: ${{ steps.uso_depois.outputs.uso }}
+      inicio: ${{ steps.uso_antes.outputs.inicio }}
+      fim: ${{ steps.uso_depois.outputs.fim }}
     steps:
       - name: Baixar os scripts do padroes
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -166,6 +170,17 @@ jobs:
           # -c: litellm e mcp fixos (constraints/agente-openhands.txt); soltos, uma versão nova quebrou o par em 18/10.
           python -m pip install --quiet -c _padroes/constraints/agente-openhands.txt "openhands-sdk==${SDK_VERSION}" "openhands-tools==${SDK_VERSION}"
 
+      # Custo MEDIDO: quanto a chave do OpenRouter gastou antes e depois do agente (GET /api/v1/key).
+      # A estimativa do SDK errou para baixo em 28/10/2026 (dizia US$ 0,01 a 0,07; o painel mostrou ~US$ 0,10 a 0,88).
+      - name: Medir o gasto da chave (antes)
+        id: uso_antes
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+        run: |
+          echo "inicio=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" uso-chave
+
       - name: Rodar o agente
         working-directory: work
         env:
@@ -180,6 +195,18 @@ jobs:
           set -o pipefail
           python "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" rodar 2>&1 | tee "$GITHUB_WORKSPACE/agente.log"
 
+      - name: Medir o gasto da chave (depois)
+        id: uso_depois
+        if: always() && steps.uso_antes.outcome == 'success'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+        run: |
+          # O OpenRouter contabiliza a última chamada com alguns segundos de atraso.
+          sleep 30
+          echo "fim=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" uso-chave
+
       - name: Baixar uma cópia limpa para gerar o patch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -189,6 +216,9 @@ jobs:
 
       - name: Gerar o patch (texto) com o que o agente mudou
         id: patch
+        env:
+          USO_ANTES: ${{ steps.uso_antes.outputs.uso }}
+          USO_DEPOIS: ${{ steps.uso_depois.outputs.uso }}
         run: |
           set -euo pipefail
           rsync -a --delete --exclude='.git' work/ patchrepo/
@@ -199,7 +229,8 @@ jobs:
             echo "tem_mudancas=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          custo="$(grep -oE 'Custo acumulado \(estimado pelo SDK\): [0-9]+(\.[0-9]+)?' "$GITHUB_WORKSPACE/agente.log" | tail -n 1 | grep -oE '[0-9]+(\.[0-9]+)?$' || true)"
+          # Custo medido (diferença do gasto da chave); sem medição, vazio (o PR mostra NÃO MEDIDO).
+          custo="$(awk -v a="$USO_ANTES" -v d="$USO_DEPOIS" 'BEGIN { if (a ~ /^[0-9]+(\.[0-9]+)?$/ && d ~ /^[0-9]+(\.[0-9]+)?$/ && d + 0 >= a + 0) printf "%.4f", d - a }')"
           echo "custo=${custo}" >> "$GITHUB_OUTPUT"
           git -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-ext-diff > "$GITHUB_WORKSPACE/agente.patch"
           git -c core.hooksPath=/dev/null diff --cached --stat | tail -n 20
@@ -403,3 +434,50 @@ jobs:
             msg="O agente produziu mudanças, mas o PR não foi aberto (resultado da publicação: ${PUBLICAR}). Veja: ${RUN_URL}"
           fi
           gh issue comment "$NUMERO" --body "$msg"
+
+  # ------------------------------------------------------------------ 4. custo medido na ficha
+  # Toda execução real deixa na ficha o custo MEDIDO (com marca legível por máquina), para o relatório
+  # semanal dizer quanto custa cada PR aceito e se o fluxo de fichas compensa.
+  custo:
+    needs: [agente, publicar]
+    if: always() && needs.agente.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Baixar os scripts do padroes
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          ref: ${{ github.job_workflow_sha || 'main' }}
+          path: _padroes
+          token: ${{ secrets.PADROES_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Comentar o custo medido na ficha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMERO: ${{ github.event.issue.number }}
+          MODELO: ${{ needs.agente.outputs.modelo }}
+          USO_ANTES: ${{ needs.agente.outputs.uso_antes }}
+          USO_DEPOIS: ${{ needs.agente.outputs.uso_depois }}
+          INICIO: ${{ needs.agente.outputs.inicio }}
+          FIM: ${{ needs.agente.outputs.fim }}
+          RUN_ID: ${{ github.run_id }}
+          AGENTE: ${{ needs.agente.result }}
+          TEM: ${{ needs.agente.outputs.tem_mudancas }}
+          PUBLICAR: ${{ needs.publicar.result }}
+        run: |
+          set -euo pipefail
+          if [ "$AGENTE" = "success" ] && [ "$TEM" = "true" ] && [ "$PUBLICAR" = "success" ]; then
+            RESULTADO="pr"
+          elif [ "$AGENTE" = "success" ] && [ "$TEM" != "true" ]; then
+            RESULTADO="sem-mudanca"
+          else
+            RESULTADO="falha"
+          fi
+          export RESULTADO
+          python3 _padroes/scripts/agente_openhands.py registro-custo > "$RUNNER_TEMP/custo.md"
+          gh issue comment "$NUMERO" --body-file "$RUNNER_TEMP/custo.md"
