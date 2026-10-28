@@ -120,7 +120,11 @@ def lista_de_globs(texto: str | None) -> list[str]:
         if not item or item.startswith("```") or item.casefold() == _SEM_RESPOSTA:
             continue
         item = re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", item).strip()
-        item = item.strip("`").strip()
+        # A ficha pode anotar o caminho: "`tests/x.test.ts` (arquivo novo)" ou "src/a.py, só a função b".
+        # Vale só o caminho (o trecho entre crases, ou a 1ª palavra); com a anotação junto, a glob nunca
+        # casava e o arquivo era descartado do PR (MKT #110 e #111, 28/10/2026).
+        crase = re.match(r"`([^`]+)`", item)
+        item = crase.group(1).strip() if crase else item.split()[0].rstrip(",;")
         if item and item not in globs:
             globs.append(item)
     return globs
