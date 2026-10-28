@@ -322,3 +322,23 @@ def test_main_protegidos_extra_e_regex_de_teste(tmp_path):
     resumo = (tmp_path / "resumo.md").read_text(encoding="utf-8")
     assert "src/pisos.json" in resumo and "PROTEGIDO" in resumo
     assert "TESTE" not in resumo.split("### Violações")[1]
+
+
+def test_anotacao_ao_lado_do_caminho_nao_vira_parte_da_glob():
+    corpo = (
+        "### Arquivos permitidos\n\n"
+        "- `packages/x/src/a.ts`\n"
+        "- `packages/x/test/a.test.ts` (arquivo novo)\n"
+        "- docs/b.md (só a seção 3)\n"
+        "- src/c.py, apenas a função d\n\n"
+        "### Tamanho máximo do diff (linhas)\n\n150\n"
+    )
+    f = escopo.ler_ficha(issue(corpo), 5)
+    assert f.permitidos == ["packages/x/src/a.ts", "packages/x/test/a.test.ts", "docs/b.md", "src/c.py"]
+    assert escopo.casa("packages/x/test/a.test.ts", f.permitidos) is not None
+
+
+def test_caminho_sem_anotacao_continua_igual_controle():
+    corpo = "### Arquivos permitidos\n\n- `src/**`\n- tests/**\n\n### Tamanho máximo do diff (linhas)\n\n150\n"
+    f = escopo.ler_ficha(issue(corpo), 5)
+    assert f.permitidos == ["src/**", "tests/**"]
