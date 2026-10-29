@@ -152,6 +152,54 @@ def test_mutante_que_nao_compila_nao_conta_como_morto(tmp_path):
     assert not rel.ok
 
 
+# Saídas reais do Gradle no MyReader (29/10/2026): compilação que falha NÃO é mutante morto.
+GRADLE_NAO_COMPILA = [
+    "e: file:///C:/proj/core/src/main/kotlin/x/LegacyKeys.kt:33:34 Argument type mismatch: actual type is 'Long?', but 'Long' was expected.",
+    "   > Compilation error. See log for more details",
+    "e: Unresolved reference 'StructureCard'.",
+    "> Task :core:compileKotlin FAILED",
+    "> Task :app:compileDebugKotlin FAILED",
+    "> Task :app:compileDebugUnitTestKotlin FAILED",
+    "> Task :core:compileTestKotlin FAILED",
+    "> Android resource compilation failed",
+    "Execution failed for task ':app:compileReleaseKotlin'.",
+]
+
+# Teste que reprova por asserção (JUnit 5 no :core, JUnit 4 no :app): é mutante morto de verdade.
+GRADLE_TESTE_REPROVA = """> Task :core:test FAILED
+
+LegacyKeysTest > duas antigas da mesma estrutura se juntam na mais antiga() FAILED
+    org.opentest4j.AssertionFailedError at LegacyKeysTest.kt:27
+
+RotulosTest > rotulos em portugues FAILED
+    java.lang.AssertionError at RotulosTest.kt:21
+
+264 tests completed, 2 failed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:test'.
+> There were failing tests. See the report at: file:///C:/proj/core/build/reports/tests/test/index.html
+
+BUILD FAILED in 9s
+"""
+
+
+@pytest.mark.parametrize("linha", GRADLE_NAO_COMPILA)
+def test_mutante_kotlin_que_nao_compila_e_suspeito(tmp_path, linha):
+    raiz = projeto(tmp_path)
+    resultado = mf.testar_mutacao(1, M_OK, raiz, CMD, lambda *_: (1, f"BUILD FAILED\n{linha}\n"), mf.TIMEOUT_PADRAO)
+    assert resultado.veredito == "SUSPEITO", linha
+    assert (raiz / "mod.py").read_text(encoding="utf-8") == CODIGO  # restaurado
+
+
+def test_teste_kotlin_que_reprova_por_assercao_continua_morto(tmp_path):
+    raiz = projeto(tmp_path)
+    resultado = mf.testar_mutacao(1, M_OK, raiz, CMD, lambda *_: (1, GRADLE_TESTE_REPROVA), mf.TIMEOUT_PADRAO)
+    assert resultado.veredito == "morreu"  # controle: o sinal novo não engole o teste que reprova de verdade
+
+
 def test_arquivo_e_restaurado_mesmo_quando_o_comando_explode(tmp_path):
     raiz = projeto(tmp_path)
 
