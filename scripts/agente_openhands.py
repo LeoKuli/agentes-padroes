@@ -118,6 +118,21 @@ def montar_prompt(issue: dict) -> str:
     return MOLDE_PROMPT.format(numero=numero, titulo=titulo, corpo=corpo)
 
 
+def validar_ficha(issue: dict) -> None:
+    """The ficha must be readable by the SAME parser the `escopo` check uses BEFORE the model is called.
+
+    crm-oralunic#29 (29/10/2026): a ficha written with "## " and without "Tamanho máximo do diff" ran the
+    model (US$ 0.40) and the patch was thrown away by `fora-da-ficha` afterwards. Unreadable: stop here, cost zero.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import escopo  # noqa: PLC0415 - sibling script, imported only here
+
+    try:
+        escopo.ler_ficha(issue, int(issue.get("number") or 0))
+    except escopo.ErroFicha as e:
+        raise ErroAgente(f"ficha ilegível: {e} Use ### nas seções (Arquivos permitidos, Tamanho máximo do diff).") from e
+
+
 def fora_da_ficha(issue: dict, caminhos: list[str]) -> list[str]:
     """Paths the agent changed that the ficha does not allow (they are dropped before the PR).
 
@@ -289,7 +304,9 @@ def cmd_modelo() -> None:
 
 def cmd_prompt() -> None:
     saida = Path(_env("PROMPT_FILE", "prompt.txt"))
-    saida.write_text(montar_prompt(_carregar_evento()["issue"]), encoding="utf-8", newline="\n")
+    issue = _carregar_evento()["issue"]
+    validar_ficha(issue)  # o prompt de ficha ilegível nem é gravado
+    saida.write_text(montar_prompt(issue), encoding="utf-8", newline="\n")
     print(f"Prompt gravado em {saida}")
 
 
@@ -308,6 +325,7 @@ def cmd_rodar() -> None:
         raise ErroAgente("MAX_ITERATIONS não é um número.") from e
     if not 1 <= max_iter <= 500:
         raise ErroAgente("MAX_ITERATIONS fora de 1..500.")
+    validar_ficha(_carregar_evento()["issue"])  # antes do modelo: ficha ilegível custa zero
     prompt = Path(_env("PROMPT_FILE", "prompt.txt")).read_text(encoding="utf-8")
 
     from openhands.sdk import LLM, Conversation  # imported late: only this step needs the SDK

@@ -140,6 +140,92 @@ def issue_ficha(corpo=FICHA_OK):
     return {"number": 4, "body": corpo, "author_association": "OWNER", "labels": [{"name": "ficha"}]}
 
 
+FICHA_29 = (Path(__file__).resolve().parent / "fixtures" / "ficha_crm_oralunic_29.md").read_text(encoding="utf-8")
+
+
+def _sdk_falso(monkeypatch):
+    """Dublê do SDK do OpenHands (o cliente da OpenRouter): registra cada LLM criado."""
+    import types
+
+    chamadas = []
+
+    class LLM:
+        def __init__(self, **config):
+            chamadas.append(config.get("model"))
+
+    class Conversation:
+        def __init__(self, **_):
+            self.state = types.SimpleNamespace(execution_status="finished")
+            self.conversation_stats = types.SimpleNamespace(
+                get_combined_metrics=lambda: types.SimpleNamespace(accumulated_cost=0.01)
+            )
+
+        def send_message(self, _):
+            pass
+
+        def run(self):
+            pass
+
+    sdk = types.ModuleType("openhands.sdk")
+    sdk.LLM, sdk.Conversation = LLM, Conversation
+    preset = types.ModuleType("openhands.tools.preset.default")
+    preset.get_default_agent = lambda **_: object()
+    for nome, mod in {
+        "openhands": types.ModuleType("openhands"),
+        "openhands.sdk": sdk,
+        "openhands.tools": types.ModuleType("openhands.tools"),
+        "openhands.tools.preset": types.ModuleType("openhands.tools.preset"),
+        "openhands.tools.preset.default": preset,
+    }.items():
+        monkeypatch.setitem(sys.modules, nome, mod)
+    return chamadas
+
+
+def _rodar(tmp_path, monkeypatch, corpo):
+    ev = tmp_path / "ev.json"
+    ev.write_text(json.dumps({"issue": issue_ficha(corpo)}), encoding="utf-8")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("prompt", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(ev))
+    monkeypatch.setenv("PROMPT_FILE", str(prompt))
+    monkeypatch.setenv("LLM_API_KEY", "chave-ficticia")
+    monkeypatch.setenv("LLM_MODEL", "openrouter/teste/modelo")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    chamadas = _sdk_falso(monkeypatch)
+    return ag.main(["x", "rodar"]), chamadas
+
+
+def test_rodar_ficha_ilegivel_para_antes_do_modelo(tmp_path, monkeypatch, capsys):
+    # crm-oralunic#29 (29/10): "## " e sem tamanho máximo; o modelo rodou (US$ 0,40) e o patch foi jogado fora.
+    codigo, chamadas = _rodar(tmp_path, monkeypatch, FICHA_29)
+    saida = capsys.readouterr().out
+    assert codigo == 1
+    assert chamadas == [], "o cliente da OpenRouter não pode ser chamado com ficha ilegível"
+    assert "::error::ficha ilegível" in saida and "###" in saida
+
+
+def test_rodar_ficha_legivel_chama_o_modelo(tmp_path, monkeypatch):
+    """Controle positivo: a mesma ficha com "### " chega ao modelo."""
+    codigo, chamadas = _rodar(tmp_path, monkeypatch, FICHA_OK)
+    assert codigo == 0
+    assert chamadas == ["openrouter/teste/modelo"]
+
+
+def test_prompt_de_ficha_ilegivel_nao_e_gravado(tmp_path, monkeypatch, capsys):
+    ev = tmp_path / "ev.json"
+    ev.write_text(json.dumps({"issue": issue_ficha(FICHA_29)}), encoding="utf-8")
+    prompt = tmp_path / "prompt.txt"
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(ev))
+    monkeypatch.setenv("PROMPT_FILE", str(prompt))
+    assert ag.main(["x", "prompt"]) == 1
+    assert not prompt.exists()
+    assert "::error::ficha ilegível" in capsys.readouterr().out
+    # controle positivo: com "### " o prompt é gravado
+    ev.write_text(json.dumps({"issue": issue_ficha()}), encoding="utf-8")
+    assert ag.main(["x", "prompt"]) == 0
+    assert prompt.exists()
+
+
 def test_fora_da_ficha_descarta_o_lixo_e_mantem_o_permitido():
     # Caso real 17/10 (video-edicao #7): o kimi gravou a saída de um `git diff` num arquivo "tatus --short".
     fora = ag.fora_da_ficha(issue_ficha(), ["tests/test_radar_num.py", "tatus --short", "radar/coleta.py", ""])
