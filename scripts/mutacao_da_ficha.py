@@ -33,6 +33,10 @@ Entradas (variáveis de ambiente; o texto da ficha e do PR é NÃO confiável e 
     GITHUB_STEP_SUMMARY  (opcional) arquivo onde o resumo em Markdown é gravado
 Também por linha de comando: --repo, --ficha N, --comando, --raiz, --timeout.
 
+No Windows o comando roda pelo cmd.exe: "./gradlew" não existe lá e o comando falha em TODA rodada, então toda
+mutação aparece como "morreu" e só o controle positivo acusa. Use o caminho absoluto, por exemplo
+--comando "C:/caminho/da/raiz/gradlew.bat -p C:/caminho/da/raiz :core:test" (lição de 29/10/2026, MYR-057).
+
 Saída: código 0 só se TODA mutação morreu e o controle positivo passou; 1 em qualquer outro caso.
 Ficha sem seção de mutação, formato não entendido, âncora que não casa, tempo esgotado: "NÃO MEDIDO",
 nunca verde. Limite assumido: o script prova que o teste REPROVA com a troca; que ele reprova NA

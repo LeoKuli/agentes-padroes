@@ -55,6 +55,11 @@
 ## Mutação que tem de morrer
 
 <!-- A alteração no código que o teste precisa detectar, e QUAL asserção deve reprová-la. -->
+<!-- Quem escreve a ficha prova cada mutação com scripts/mutacao_da_ficha.py ANTES de lançar e lê a linha do
+     CONTROLE POSITIVO: se o controle reprovou, nenhuma "morte" vale (o comando falhou por outro motivo).
+     No Windows o script roda o comando pelo cmd.exe: "./gradlew" não existe lá e faz TODA mutação "morrer" de mentira.
+     Use o caminho absoluto: --comando "<raiz>/gradlew.bat -p <raiz> :core:test" (lição de 29/10/2026, MYR-057).
+     Para saber QUAL teste caiu no Gradle, leia build/test-results/test/*.xml: a cauda da saída não traz o nome. -->
 
 - Mutação:
 - Asserção que a mata:
