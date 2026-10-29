@@ -75,7 +75,18 @@ SINAIS_DE_QUEBRA = (
     "ImportError",
     "(CompileError)",
     "(TokenMissingError)",
+    # Gradle e Kotlin (29/10/2026, MYR-067: mutante Kotlin que não compila caía em "morreu")
+    "e: file:",
+    "Compilation error",
+    "Unresolved reference",
+    "compileKotlin FAILED",
+    "compileDebugKotlin FAILED",
+    "compileDebugUnitTestKotlin FAILED",
+    "compileTestKotlin FAILED",
+    "Android resource compilation failed",
 )
+# A tarefa de compilação que falhou, em qualquer módulo e variante ("Execution failed for task ':app:compileDebugKotlin'").
+SINAIS_DE_QUEBRA_RE = (re.compile(r"Execution failed for task '[^']*:compile"),)
 
 
 # --------------------------------------------------------------------------------------
@@ -307,7 +318,9 @@ def testar_mutacao(n: int, m: Mutacao, raiz: Path, comando: str, rodar, timeout:
         alvo.write_bytes(bruto)  # sempre; se isto falhar o erro sobe e o job reprova
     if codigo == 0:
         return Linha(n, m, False, "SOBREVIVEU", "o comando de teste PASSOU com o mutante aplicado", cauda(saida))
-    quebra = next((s for s in SINAIS_DE_QUEBRA if s in saida), None)
+    quebra = next((s for s in SINAIS_DE_QUEBRA if s in saida), None) or next(
+        (r.pattern for r in SINAIS_DE_QUEBRA_RE if r.search(saida)), None
+    )
     if quebra:
         return Linha(
             n, m, False, "SUSPEITO",
