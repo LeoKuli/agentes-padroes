@@ -7,8 +7,9 @@ name: mutacao-ficha
 # árvore restaurada e tem de PASSAR (controle positivo). Ficha sem seção de mutação = NÃO MEDIDO = falha.
 # O resultado vai como tabela no resumo do job ($GITHUB_STEP_SUMMARY).
 #
-# Só roda em PR aberto por agente (autor `github-actions[bot]`) cuja descrição tem `Ficha: #N`.
-# Em qualquer outro PR o job fica "skipped".
+# Só roda em PR aberto por agente (autor na lista `autores_agente`: o GITHUB_TOKEN e os apps dos robôs) cuja descrição
+# tem `Ficha: #N`. Em qualquer outro PR o job fica "skipped". Em 30/10/2026 o PR do app `robo-fichas-leokuli` saiu
+# com a mutação PULADA, porque a condição só conhecia `github-actions[bot]`.
 #
 # Uso no repositório que chama:
 #   on:
@@ -55,6 +56,10 @@ on:
         description: "author_association aceitas para quem abriu a ficha (separadas por vírgula)."
         type: string
         default: "OWNER,MEMBER,COLLABORATOR"
+      autores_agente:
+        description: "JSON: logins que abrem PR de agente (o GITHUB_TOKEN e os apps dos robôs). Só nesses PRs a mutação roda."
+        type: string
+        default: '["github-actions[bot]","robo-fichas-leokuli[bot]","kuligovski-portao[bot]"]'
 
 permissions:
   contents: read
@@ -64,7 +69,7 @@ permissions:
 jobs:
   mutacao:
     if: >-
-      github.event.pull_request.user.login == 'github-actions[bot]'
+      contains(fromJSON(inputs.autores_agente), github.event.pull_request.user.login)
       && contains(github.event.pull_request.body, 'Ficha: #')
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
