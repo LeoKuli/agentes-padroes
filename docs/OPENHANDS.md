@@ -92,6 +92,17 @@ e o CI roda sozinho, sem fechar/reabrir.
   continua sem poder alterar `.github/workflows/`; o descarte de `.github/` do patch continua valendo.
 - **Sem o segredo** (ou com o valor vazio) o job cai para o `GITHUB_TOKEN` e tudo se comporta como descrito acima:
   o CI não roda sozinho e o mantenedor fecha/reabre o PR. A mensagem do PR e da ficha diz qual dos dois casos ocorreu.
+- **O app dos robôs e o `exigir_app` (30/10/2026).** Desde 11/06/2026 o GitHub prende em `action_required` o CI de PR
+  aberto pelo `GITHUB_TOKEN` (https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/).
+  - **O app:** o `robo-fichas-leokuli` (id na variável `ROBO_APP_ID`, chave no segredo `ROBO_APP_PRIVATE_KEY`) está
+    instalado nos repositórios do agente.
+  - **O chamador:** passa `app_id: ${{ vars.ROBO_APP_ID }}`, `exigir_app: true` e
+    `PORTAO_APP_KEY: ${{ secrets.ROBO_APP_PRIVATE_KEY }}`.
+  - **Sem recuo:** com `exigir_app`, sem a chave, ou se o token do app não sair, o job `publicar` FALHA com
+    `::error::` antes de qualquer checkout. Nunca há recuo calado para o `GITHUB_TOKEN`.
+  - **Quem não passa `exigir_app`:** continua como antes.
+  - **A lista de autores do `juntar_so_teste.py`** ainda não tem `robo-fichas-leokuli[bot]`. Junção automática para
+    esse app é outra decisão.
 - Contrapartida: como o CI agora roda **antes** de uma pessoa ler o diff, o que o agente pôs em arquivos permitidos
   (testes, por exemplo) executa no CI do repositório. Por isso a ficha deve listar só os arquivos necessários e o CI
   dos `pull_request` não deve receber segredos além dos de leitura.

@@ -2,9 +2,11 @@ name: agente-openhands
 
 # Workflow reutilizável: um agente externo (OpenHands SDK, qualquer LLM) trabalha DENTRO do
 # GitHub Actions, disparado por um rótulo `agente:<modelo>` numa Issue-ficha, sem conta de
-# colaborador. Abre um PR e, se o chamador repassar a chave do app `kuligovski-portao`
-# (PORTAO_APP_KEY), o CI dispara sozinho no PR; sem a chave, cai para o GITHUB_TOKEN, o CI NÃO
-# roda sozinho e o mantenedor fecha/reabre o PR para disparar o CI.
+# colaborador. Abre um PR e, se o chamador repassar a chave de um app do GitHub (PORTAO_APP_KEY, com o
+# id em `app_id`), o CI dispara sozinho no PR; sem a chave, cai para o GITHUB_TOKEN, o CI NÃO roda sozinho e
+# o mantenedor fecha/reabre o PR para disparar o CI. Com `exigir_app: true` não há recuo: sem a chave, ou se
+# o token do app falhar, o job `publicar` FALHA com erro claro (desde 11/06/2026 o GitHub prende em
+# `action_required` o CI de PR aberto pelo GITHUB_TOKEN).
 #
 # Por que não existe "o resolver do OpenHands" aqui: o workflow reutilizável antigo
 # (openhands-resolver.yml, módulo openhands.resolver) foi REMOVIDO do upstream em 2026-04-23
@@ -25,7 +27,8 @@ name: agente-openhands
 #   - o token do app (se a chave veio) existe SÓ no job `publicar` (outra máquina, só recebe o patch),
 #     com permissões mínimas (contents/pull-requests/issues = write) e sem `workflows`: o app não pode
 #     alterar .github/workflows. Mudanças em .github/ também são descartadas do patch.
-#   - sem a chave, usa o GITHUB_TOKEN: PR criado por ele não dispara workflows (o CI não roda sozinho).
+#   - sem a chave, usa o GITHUB_TOKEN: PR criado por ele não dispara workflows (o CI não roda sozinho),
+#     a não ser com `exigir_app: true`, que falha em vez de recuar.
 
 on:
   workflow_call:
@@ -65,6 +68,16 @@ on:
         description: "Versão exata do openhands-sdk e do openhands-tools (PyPI)."
         type: string
         default: "1.54.0"
+      app_id:
+        description: "ID do app do GitHub que publica o PR (a chave dele vem em PORTAO_APP_KEY). Padrão: kuligovski-portao."
+        type: string
+        default: "5363413"
+      exigir_app:
+        description: >-
+          true: o PR SÓ sai pelo app. Sem a chave, ou se o token do app falhar, o job publicar falha com erro claro;
+          nunca cai calado para o GITHUB_TOKEN.
+        type: boolean
+        default: false
     secrets:
       LLM_API_KEY:
         description: "Chave do provedor do modelo, COM teto de gasto. Criada pelo dono, nunca por um agente."
@@ -76,7 +89,7 @@ on:
         description: "Opcional: leitura do repositório LeoKuli/agentes-padroes (se o GITHUB_TOKEN não alcançá-lo)."
         required: false
       PORTAO_APP_KEY:
-        description: "Opcional: chave privada do app GitHub kuligovski-portao (App ID 5363413). Com ela o PR sai do app e o CI dispara sozinho; sem ela, cai para o GITHUB_TOKEN."
+        description: "Opcional: chave privada do app do GitHub de `app_id`. Com ela o PR sai do app e o CI dispara sozinho; sem ela, cai para o GITHUB_TOKEN (ou falha, com `exigir_app`)."
         required: false
 
 permissions:
@@ -273,16 +286,28 @@ jobs:
       # Só "true"/"false": a chave em si nunca entra no ambiente do job.
       TEM_CHAVE_APP: ${{ secrets.PORTAO_APP_KEY != '' }}
     steps:
-      - name: Gerar o token do app kuligovski-portao (só se a chave foi repassada)
+      - name: Exigir a chave do app (sem recuo calado para o GITHUB_TOKEN)
+        if: inputs.exigir_app && env.TEM_CHAVE_APP != 'true'
+        run: |
+          echo "::error::exigir_app=true, mas a chave do app (PORTAO_APP_KEY) chegou vazia. Nenhum PR sai com o GITHUB_TOKEN: confira o segredo do app neste repositório e o mapeamento no agente.yml."
+          exit 1
+
+      - name: Gerar o token do app (só se a chave foi repassada)
         id: app
         if: env.TEM_CHAVE_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: 5363413
+          app-id: ${{ inputs.app_id }}
           private-key: ${{ secrets.PORTAO_APP_KEY }}
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
+
+      - name: Exigir o token do app (sem recuo calado para o GITHUB_TOKEN)
+        if: inputs.exigir_app && steps.app.outputs.token == ''
+        run: |
+          echo "::error::exigir_app=true, mas o token do app não foi gerado (app_id, chave ou instalação do app neste repositório). Nenhum PR sai com o GITHUB_TOKEN."
+          exit 1
 
       - name: Baixar os scripts do padroes
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -395,7 +420,7 @@ jobs:
           gh issue edit "$NUMERO" --remove-label "estado:pronta" 2>/dev/null || true
           gh issue edit "$NUMERO" --remove-label "estado:em-andamento" 2>/dev/null || true
           if [ "$CI_SOZINHO" = "true" ]; then
-            nota="O CI roda sozinho (PR aberto pelo app kuligovski-portao); o mantenedor revisa o diff."
+            nota="O CI roda sozinho (PR aberto pelo app do GitHub); o mantenedor revisa o diff."
           else
             nota="O CI não roda sozinho; o mantenedor revisa o diff e fecha/reabre o PR."
           fi

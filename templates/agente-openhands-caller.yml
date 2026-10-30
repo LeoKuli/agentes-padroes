@@ -6,8 +6,9 @@
 #   3. Rótulos: ./scripts/aplicar-labels.sh LeoKuli/<repo> agente:deepseek agente:deepseek-flash agente:qwen agente:kimi agente:haiku
 #
 # Uso: na Issue-ficha (rótulo `ficha`), o mantenedor aplica `agente:deepseek-flash` (ou outro do mapa abaixo).
-# O agente abre um PR. Com o segredo PORTAO_APP_KEY (app kuligovski-portao) o CI roda sozinho; sem ele
-# o PR sai com o GITHUB_TOKEN, o CI NÃO roda sozinho e é preciso fechar/reabrir o PR.
+# O agente abre um PR pelo app dos robôs (variável ROBO_APP_ID e segredo ROBO_APP_PRIVATE_KEY no repositório, app
+# instalado nele): o CI roda sozinho. Com `exigir_app: true`, se o app falhar o job publicar FALHA com erro claro;
+# nunca cai para o GITHUB_TOKEN (desde 11/06/2026 o GitHub prende em `action_required` o CI de PR do GITHUB_TOKEN).
 name: agente
 
 on:
@@ -33,11 +34,13 @@ jobs:
       modelos: '{"deepseek":"openrouter/deepseek/deepseek-v4-pro","deepseek-flash":"openrouter/deepseek/deepseek-v4.1-flash","qwen":"openrouter/qwen/qwen3-coder-next","kimi":"openrouter/moonshotai/kimi-k2.7-code","haiku":"openrouter/anthropic/claude-haiku-5.5"}'
       max_iterations: 50
       timeout_minutes: 45
+      # O app dos robôs (robo-fichas-leokuli): o id vem da variável do repositório; sem ela, ou sem a chave, falha.
+      app_id: ${{ vars.ROBO_APP_ID }}
+      exigir_app: true
     secrets:
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      # Chave do app GitHub `kuligovski-portao` (App ID 5363413): com ela o PR sai do app e o CI
-      # dispara sozinho. Sem o segredo no repositório o valor vai vazio e o fluxo cai para o GITHUB_TOKEN.
-      PORTAO_APP_KEY: ${{ secrets.PORTAO_APP_KEY }}
+      # Chave privada do app dos robôs: com ela o PR sai do app e o CI dispara sozinho.
+      PORTAO_APP_KEY: ${{ secrets.ROBO_APP_PRIVATE_KEY }}
       # Provedor direto (sem OpenRouter): descomente e crie o segredo LLM_BASE_URL.
       # LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
       # Se o padroes (privado) não for alcançável pelo GITHUB_TOKEN:
