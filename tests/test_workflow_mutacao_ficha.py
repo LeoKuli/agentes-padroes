@@ -32,9 +32,16 @@ def test_entradas_combinadas():
 def test_so_roda_em_pr_de_agente_com_ficha():
     job = _wf()["jobs"]["mutacao"]
     cond = " ".join(str(job["if"]).split())
-    assert "github.event.pull_request.user.login == 'github-actions[bot]'" in cond
+    assert "contains(fromJSON(inputs.autores_agente), github.event.pull_request.user.login)" in cond
     assert "contains(github.event.pull_request.body, 'Ficha: #')" in cond
     assert "&&" in cond
+
+
+def test_os_apps_dos_robos_sao_autores_de_agente():
+    """30/10/2026: o PR do app robo-fichas-leokuli saiu com a mutacao PULADA (a condicao so via github-actions[bot])."""
+    autores = json.loads(_call()["inputs"]["autores_agente"]["default"])
+    assert {"github-actions[bot]", "robo-fichas-leokuli[bot]", "kuligovski-portao[bot]"} == set(autores)
+    assert "LeoKuli" not in autores  # controle: PR de gente nao e PR de agente
 
 
 def test_permissoes_so_de_leitura():
