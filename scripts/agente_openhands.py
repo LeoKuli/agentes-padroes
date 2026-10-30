@@ -158,7 +158,7 @@ _LINHA_ACEITE_SEM_CI = (
     "- Comando de aceite da ficha: NÃO MEDIDO por esta automação; o CI (após o fechar/reabrir) é quem mede."
 )
 _LINHA_RISCO_CI_SOZINHO = (
-    "- Este PR foi aberto pelo app `kuligovski-portao`; o CI roda sozinho. O revisor confere o diff, "
+    "- Este PR foi aberto pelo app do GitHub; o CI roda sozinho. O revisor confere o diff, "
     "em especial `.github/` (a automação descarta mudanças ali)."
 )
 _LINHA_ACEITE_CI_SOZINHO = (
@@ -211,7 +211,7 @@ def montar_corpo_pr(
 def montar_comentario_pr(sufixo: str, modelo: str, ci_sozinho: bool = False) -> str:
     if ci_sozinho:
         return (
-            f"PR aberto por agente (modelo {modelo}, rótulo `agente:{sufixo}`) pelo app `kuligovski-portao`: "
+            f"PR aberto por agente (modelo {modelo}, rótulo `agente:{sufixo}`) pelo app do GitHub: "
             "o CI roda sozinho. O mantenedor revisa o diff, em especial .github/."
         )
     return (

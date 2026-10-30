@@ -139,9 +139,9 @@ def _passo_do_app(job):
 
 def test_chave_do_app_e_segredo_opcional_do_workflow_call():
     call = _gatilho(_wf())["workflow_call"]
-    assert call["secrets"]["PORTAO_APP_KEY"]["required"] is False  # sem ela, cai para o GITHUB_TOKEN
+    assert call["secrets"]["PORTAO_APP_KEY"]["required"] is False  # sem ela, cai para o GITHUB_TOKEN (ou falha, com exigir_app)
     caller = _carregar("templates", "agente-openhands-caller.yml")["jobs"]["agente"]["secrets"]
-    assert caller["PORTAO_APP_KEY"] == "${{ secrets.PORTAO_APP_KEY }}"
+    assert caller["PORTAO_APP_KEY"] == "${{ secrets.ROBO_APP_PRIVATE_KEY }}"  # 30/10/2026: o app dos robôs
 
 
 def test_token_do_app_so_existe_no_job_publicar():
@@ -152,7 +152,8 @@ def test_token_do_app_so_existe_no_job_publicar():
         assert "PORTAO_APP_KEY" not in texto, nome
         assert "steps.app" not in texto, nome
     passo = _passo_do_app(jobs["publicar"])
-    assert passo["with"]["app-id"] == APP_ID
+    assert passo["with"]["app-id"] == "${{ inputs.app_id }}"
+    assert _gatilho(_wf())["workflow_call"]["inputs"]["app_id"]["default"] == str(APP_ID)
     assert passo["with"]["private-key"] == "${{ secrets.PORTAO_APP_KEY }}"
     assert re.search(r"@[0-9a-f]{40}$", passo["uses"])
 
@@ -184,6 +185,31 @@ def test_sem_a_chave_o_passo_do_app_e_pulado_e_o_fluxo_cai_para_o_github_token()
     # a mensagem do fallback continua dizendo que o CI não roda sozinho
     assert "O CI não roda sozinho" in abrir_pr["run"]
     assert "O CI roda sozinho" in abrir_pr["run"]
+
+
+def test_exigir_app_falha_sem_a_chave_e_sem_o_token_e_nunca_recua():
+    """30/10/2026: com o app exigido, o PR nunca sai calado pelo GITHUB_TOKEN (o GitHub prende o CI dele)."""
+    entrada = _gatilho(_wf())["workflow_call"]["inputs"]["exigir_app"]
+    assert entrada["type"] == "boolean" and entrada["default"] is False  # controle: quem não pede segue igual
+    passos = _wf()["jobs"]["publicar"]["steps"]
+    nomes = [p.get("name", "") for p in passos]
+    sem_chave = passos[nomes.index("Exigir a chave do app (sem recuo calado para o GITHUB_TOKEN)")]
+    assert sem_chave["if"] == "inputs.exigir_app && env.TEM_CHAVE_APP != 'true'"
+    sem_token = passos[nomes.index("Exigir o token do app (sem recuo calado para o GITHUB_TOKEN)")]
+    assert sem_token["if"] == "inputs.exigir_app && steps.app.outputs.token == ''"
+    for passo in (sem_chave, sem_token):
+        assert "::error::" in passo["run"] and "exit 1" in passo["run"]
+    app = next(i for i, p in enumerate(passos) if str(p.get("uses", "")).startswith("actions/create-github-app-token"))
+    checkout = next(i for i, p in enumerate(passos) if str(p.get("uses", "")).startswith("actions/checkout"))
+    assert passos.index(sem_chave) < app < passos.index(sem_token) < checkout
+
+
+def test_o_modelo_do_chamador_exige_o_app_dos_robos():
+    caller = _carregar("templates", "agente-openhands-caller.yml")
+    job = caller["jobs"]["agente"]
+    assert job["with"]["app_id"] == "${{ vars.ROBO_APP_ID }}"
+    assert job["with"]["exigir_app"] is True
+    assert job["secrets"]["PORTAO_APP_KEY"] == "${{ secrets.ROBO_APP_PRIVATE_KEY }}"
 
 
 def test_o_app_vem_antes_de_qualquer_checkout_do_job_publicar():
