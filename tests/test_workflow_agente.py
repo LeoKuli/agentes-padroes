@@ -111,6 +111,23 @@ def test_o_workflow_chama_so_subcomandos_que_o_script_tem():
     assert {"modelo", "prompt", "rodar", "pr-corpo", "pr-comentario"} <= usados
 
 
+def test_o_custo_vem_do_script_sem_awk_e_a_estimativa_do_sdk_chega_ao_pr():
+    """30/10/2026: a conta do custo morava num awk que copiava o custo_medido do script e dava zero com a chave atrasada."""
+    jobs = _wf()["jobs"]
+    passos = {p.get("id"): p for p in jobs["agente"]["steps"] if p.get("id")}
+    patch = passos["patch"]["run"]
+    assert "awk" not in patch, "nenhuma conta de custo em shell"
+    assert 'agente_openhands.py" custo' in patch
+    assert passos["patch"]["env"]["CUSTO_SDK"] == "${{ steps.rodar.outputs.custo_sdk }}"
+    assert "agente_openhands.py\" rodar" in passos["rodar"]["run"], "controle: o passo rodar e o que escreve custo_sdk"
+    saidas = jobs["agente"]["outputs"]
+    assert saidas["custo_sdk"] == "${{ steps.rodar.outputs.custo_sdk }}"
+    assert saidas["custo_rotulo"] == "${{ steps.patch.outputs.custo_rotulo }}"
+    texto = yaml.safe_dump(jobs)
+    assert texto.count("CUSTO_SDK: ${{ needs.agente.outputs.custo_sdk }}") == 2, "o corpo do PR e o registro na ficha"
+    assert "CUSTO_ROTULO: ${{ needs.agente.outputs.custo_rotulo }}" in texto
+
+
 def test_caller_chama_o_workflow_com_o_gatilho_certo():
     doc = _carregar("templates", "agente-openhands-caller.yml")
     assert _gatilho(doc) == {"issues": {"types": ["labeled"]}}

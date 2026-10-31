@@ -122,6 +122,8 @@ jobs:
     outputs:
       tem_mudancas: ${{ steps.patch.outputs.tem_mudancas }}
       custo: ${{ steps.patch.outputs.custo }}
+      custo_sdk: ${{ steps.rodar.outputs.custo_sdk }}
+      custo_rotulo: ${{ steps.patch.outputs.custo_rotulo }}
       base_sha: ${{ steps.base.outputs.sha }}
       sufixo: ${{ steps.modelo.outputs.sufixo }}
       modelo: ${{ steps.modelo.outputs.modelo }}
@@ -195,6 +197,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" uso-chave
 
       - name: Rodar o agente
+        id: rodar
         working-directory: work
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -232,6 +235,7 @@ jobs:
         env:
           USO_ANTES: ${{ steps.uso_antes.outputs.uso }}
           USO_DEPOIS: ${{ steps.uso_depois.outputs.uso }}
+          CUSTO_SDK: ${{ steps.rodar.outputs.custo_sdk }}
         run: |
           set -euo pipefail
           rsync -a --delete --exclude='.git' work/ patchrepo/
@@ -242,9 +246,9 @@ jobs:
             echo "tem_mudancas=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Custo medido (diferença do gasto da chave); sem medição, vazio (o PR mostra NÃO MEDIDO).
-          custo="$(awk -v a="$USO_ANTES" -v d="$USO_DEPOIS" 'BEGIN { if (a ~ /^[0-9]+(\.[0-9]+)?$/ && d ~ /^[0-9]+(\.[0-9]+)?$/ && d + 0 >= a + 0) printf "%.4f", d - a }')"
-          echo "custo=${custo}" >> "$GITHUB_OUTPUT"
+          # 30/10/2026: a conta do custo mora no script (custo_da_execucao), nunca em shell: a diferença da chave só é desta
+          # execução quando bate com a estimativa do SDK; antes = depois com o modelo chamado é NÃO MEDIDO, nunca zero.
+          python3 "$GITHUB_WORKSPACE/_padroes/scripts/agente_openhands.py" custo
           git -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-ext-diff > "$GITHUB_WORKSPACE/agente.patch"
           git -c core.hooksPath=/dev/null diff --cached --stat | tail -n 20
           tamanho=$(wc -c < "$GITHUB_WORKSPACE/agente.patch")
@@ -382,6 +386,8 @@ jobs:
           SUFIXO: ${{ needs.agente.outputs.sufixo }}
           MODELO: ${{ needs.agente.outputs.modelo }}
           CUSTO: ${{ needs.agente.outputs.custo }}
+          CUSTO_SDK: ${{ needs.agente.outputs.custo_sdk }}
+          CUSTO_ROTULO: ${{ needs.agente.outputs.custo_rotulo }}
           BASE_BRANCH: ${{ inputs.base_branch || github.event.repository.default_branch }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -488,6 +494,7 @@ jobs:
           MODELO: ${{ needs.agente.outputs.modelo }}
           USO_ANTES: ${{ needs.agente.outputs.uso_antes }}
           USO_DEPOIS: ${{ needs.agente.outputs.uso_depois }}
+          CUSTO_SDK: ${{ needs.agente.outputs.custo_sdk }}
           INICIO: ${{ needs.agente.outputs.inicio }}
           FIM: ${{ needs.agente.outputs.fim }}
           RUN_ID: ${{ github.run_id }}
