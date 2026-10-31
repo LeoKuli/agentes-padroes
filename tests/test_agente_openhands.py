@@ -276,7 +276,9 @@ def test_uso_da_chave_sem_numero_e_nao_medido():
 
 def test_custo_medido_e_a_diferenca_do_gasto():
     assert ag.custo_medido("7.100000", "7.193400") == "0.0934"
-    assert ag.custo_medido("2", "2") == "0.0000"
+    # 30/10/2026: igual antes e depois so e zero quando o SDK diz que o modelo nem foi chamado
+    assert ag.custo_medido("2", "2", "0") == "0.0000"
+    assert ag.custo_medido("2", "2") == ag.NAO_MEDIDO
 
 
 def test_custo_sem_medicao_nunca_vira_zero():
