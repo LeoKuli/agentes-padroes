@@ -57,7 +57,8 @@ MSG_JUNTADO = "Juntado automaticamente: ficha só de teste, todos os checks verd
 MSG_PRONTO = "Pronto para juntar (só teste, tudo verde)."
 TENTATIVAS_MERGEABLE = 4
 
-_RE_CUSTO = re.compile(r"^Custo estimado pelo SDK:[ \t]*([^\n]{1,40})$", re.MULTILINE)
+# 30/10/2026: o rótulo certo é "Estimativa do SDK (não é fatura)"; o antigo continua lido nos PRs já abertos.
+_RE_CUSTO = re.compile(r"^(?:Estimativa do SDK \(não é fatura\)|Custo estimado pelo SDK):[ \t]*([^\n]{1,40})$", re.MULTILINE)
 
 
 @dataclass
@@ -375,7 +376,7 @@ def etiquetar_pronto(gh, repo: str, d: Decisao, aviso: str = "") -> None:
 def juntar(gh, repo: str, d: Decisao) -> None:
     gh(["pr", "merge", str(d.numero), "--repo", repo, "--squash", "--delete-branch", "--match-head-commit", d.sha])
     gh(["pr", "comment", str(d.numero), "--repo", repo, "--body", MSG_JUNTADO])
-    custo = f" Custo estimado pelo SDK: {d.custo}." if d.custo else ""
+    custo = f" Estimativa do SDK (não é fatura): {d.custo}." if d.custo else ""
     if d.ficha is not None:
         try:
             gh(["issue", "comment", str(d.ficha), "--repo", repo, "--body", f"PR #{d.numero} juntado automaticamente (ficha só de teste, todos os checks verdes).{custo}"])

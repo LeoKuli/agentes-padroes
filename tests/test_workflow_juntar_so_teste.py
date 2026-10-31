@@ -114,7 +114,7 @@ def test_o_agente_abre_pr_com_o_titulo_e_o_autor_que_a_juncao_espera():
 
     texto = (RAIZ / ".github" / "workflows" / "agente-openhands.yml").read_text(encoding="utf-8")
     assert '--title "[agente:${SUFIXO}]' in texto and jt.PREFIXO_TITULO == "[agente:"
-    corpo = ag.montar_corpo_pr(7, "deepseek", "m", "u", [], custo="0.01", ci_sozinho=True)
+    corpo = ag.montar_corpo_pr(7, "deepseek", "m", "u", [], custo="0.01", ci_sozinho=True, custo_sdk="0.01")
     pr = {
         "user": {"login": "kuligovski-portao[bot]", "type": "Bot"},
         "title": "[agente:deepseek] algo",

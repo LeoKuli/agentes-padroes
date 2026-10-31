@@ -175,6 +175,8 @@ def montar_corpo_pr(
     fora: list[str] | None = None,
     custo: str = "",
     ci_sozinho: bool = False,
+    custo_sdk: str = "",
+    custo_rotulo: str = "",
 ) -> str:
     # `Ficha: #N` precisa estar numa linha só, sem nada depois (ficha.yml / escopo.yml leem assim).
     linhas = [
@@ -190,7 +192,8 @@ def montar_corpo_pr(
         "",
         f"Modelo `{modelo}` (rótulo `agente:{sufixo}`) via OpenHands SDK no GitHub Actions: {run_url}",
         "",
-        f"Custo estimado pelo SDK: {('US$ ' + custo) if custo else 'NÃO MEDIDO'}",
+        f"Estimativa do SDK (não é fatura): {('US$ ' + custo_sdk) if _numero(custo_sdk) is not None else NAO_MEDIDO}",
+        linha_gasto_da_chave(custo, custo_rotulo),
         "",
         "## Dúvidas ou riscos para o revisor",
         "",
@@ -236,25 +239,72 @@ def uso_da_chave(resposta: dict) -> float | None:
     return float(uso)
 
 
-def custo_medido(antes: str, depois: str) -> str:
-    """Cost of the run = key usage after minus before, in dollars with 4 decimals; any gap is NÃO MEDIDO, never zero."""
+# 30/10/2026: a diferenca do gasto da chave so e o custo DESTA execucao quando bate com a estimativa do SDK. O contador
+# da chave atrasa (MAN-105: SDK US$ 0,46 e a chave igual antes e depois) e execucoes simultaneas na mesma chave entram
+# na mesma diferenca (MYR-071: 0,42 para um SDK de 0,016).
+TOLERANCIA_RELATIVA = 0.5
+TOLERANCIA_USD = 0.01
+
+
+def _numero(valor) -> float | None:
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def custo_medido(antes: str, depois: str, sdk: str = NAO_MEDIDO) -> str:
+    """Key usage after minus before, in dollars with 4 decimals; any gap is NÃO MEDIDO, never zero. Before == after is
+    NÃO MEDIDO unless the SDK says the model was never called (sdk == 0): a run that called the model never costs zero."""
     try:
         a, d = float(antes), float(depois)
     except ValueError:
         return NAO_MEDIDO
     if d < a:
         return NAO_MEDIDO
+    if d == a and _numero(sdk) != 0:
+        return NAO_MEDIDO
     return f"{d - a:.4f}"
 
 
+def custo_da_execucao(antes: str, depois: str, sdk: str) -> dict:
+    """A casa unica do custo de uma execucao: {"chave", "sdk", "rotulo"}. `chave` e `sdk` em dolares com 4 casas ou
+    NÃO MEDIDO; `rotulo` e "execucao" (a chave bate com o SDK), "janela" (nao atribuivel) ou "nao_medido"."""
+    s = _numero(sdk)
+    sdk_txt = f"{s:.4f}" if s is not None and s >= 0 else NAO_MEDIDO
+    chave = custo_medido(antes, depois, sdk_txt)
+    if chave == NAO_MEDIDO:
+        rotulo = "nao_medido"
+    elif sdk_txt == NAO_MEDIDO:
+        rotulo = "janela"
+    elif abs(float(chave) - s) <= max(TOLERANCIA_USD, TOLERANCIA_RELATIVA * s):
+        rotulo = "execucao"
+    else:
+        rotulo = "janela"
+    return {"chave": chave, "sdk": sdk_txt, "rotulo": rotulo}
+
+
+def linha_gasto_da_chave(chave: str, rotulo: str) -> str:
+    """O rotulo certo do gasto da chave no PR (30/10/2026: ele aparecia como "Custo estimado pelo SDK")."""
+    if not chave or chave == NAO_MEDIDO or rotulo == "nao_medido":
+        return f"Gasto da chave OpenRouter: {NAO_MEDIDO} (o contador da chave não mudou ou não pôde ser lido)"
+    if rotulo == "execucao":
+        return f"Gasto da chave OpenRouter: US$ {chave}, desta execução (bate com a estimativa do SDK)"
+    return (f"Gasto da chave OpenRouter: US$ {chave} na janela da execução, não atribuível a ela (outras execuções da "
+            "mesma chave ou contador atrasado)")
+
+
 def montar_registro_custo(registro: dict) -> str:
-    """Issue comment: one human line plus a JSON marker that the weekly report parses."""
+    """Issue comment: one human line plus a JSON marker that the weekly report parses. `usd` so leva o gasto da chave
+    quando ele bate com o SDK (30/10/2026); fora disso e NÃO MEDIDO, e o resto vai em `usd_chave` e `sdk_usd`."""
     custo = registro.get("usd", NAO_MEDIDO)
     valor = f"US$ {custo}" if custo != NAO_MEDIDO else NAO_MEDIDO
+    sdk = registro.get("sdk_usd", NAO_MEDIDO)
     linha = (
-        f"Custo medido desta execução no OpenRouter: **{valor}** · modelo `{registro.get('modelo', '')}` · "
+        f"Custo medido desta execução no OpenRouter: **{valor}** · estimativa do SDK: "
+        f"{('US$ ' + sdk) if sdk != NAO_MEDIDO else NAO_MEDIDO} · modelo `{registro.get('modelo', '')}` · "
         f"resultado: {registro.get('resultado', '')} · {registro.get('inicio', '')} a {registro.get('fim', '')} (UTC). "
-        "Medido pela diferença do gasto da chave antes e depois; execuções simultâneas na mesma chave se misturam."
+        f"{linha_gasto_da_chave(registro.get('usd_chave', custo), registro.get('rotulo', ''))}."
     )
     marca = json.dumps(registro, ensure_ascii=False, sort_keys=True)
     return f"{linha}\n\n<!-- {MARCA_CUSTO} {marca} -->\n"
@@ -341,9 +391,12 @@ def cmd_rodar() -> None:
 
     print(f"Estado final da conversa: {conversa.state.execution_status}")
     try:
-        print(f"Custo acumulado (estimado pelo SDK): {conversa.conversation_stats.get_combined_metrics().accumulated_cost}")
+        acumulado = conversa.conversation_stats.get_combined_metrics().accumulated_cost
+        print(f"Custo acumulado (estimado pelo SDK): {acumulado}")
+        _saida("custo_sdk", f"{float(acumulado):.4f}")
     except Exception as e:  # noqa: BLE001 - medição que falha é NÃO MEDIDO, nunca zero
         print(f"Custo: NÃO MEDIDO ({type(e).__name__})")
+        _saida("custo_sdk", NAO_MEDIDO)
 
 
 def cmd_pr_corpo() -> None:
@@ -354,9 +407,20 @@ def cmd_pr_corpo() -> None:
         custo = ""
     sys.stdout.write(
         montar_corpo_pr(
-            int(_env("NUMERO")), _env("SUFIXO"), _env("MODELO"), _env("RUN_URL"), excluidos, fora, custo, _ci_sozinho()
+            int(_env("NUMERO")), _env("SUFIXO"), _env("MODELO"), _env("RUN_URL"), excluidos, fora, custo, _ci_sozinho(),
+            _env("CUSTO_SDK", NAO_MEDIDO).strip(), _env("CUSTO_ROTULO").strip(),
         )
     )
+
+
+def cmd_custo() -> None:
+    """GITHUB_OUTPUT do custo para o workflow (sem conta em shell): `custo` (o gasto da chave; vazio sem medicao),
+    `custo_sdk` e `custo_rotulo`. A conta mora em custo_da_execucao."""
+    r = custo_da_execucao(_env("USO_ANTES"), _env("USO_DEPOIS"), _env("CUSTO_SDK", NAO_MEDIDO))
+    _saida("custo", "" if r["chave"] == NAO_MEDIDO else r["chave"])
+    _saida("custo_sdk", r["sdk"])
+    _saida("custo_rotulo", r["rotulo"])
+    print(linha_gasto_da_chave(r["chave"], r["rotulo"]))
 
 
 def cmd_fora_da_ficha() -> None:
@@ -400,13 +464,16 @@ def cmd_registro_custo() -> None:
         "inicio": _env("INICIO"),
         "fim": _env("FIM"),
         "run": _env("RUN_ID"),
-        "usd": custo_medido(_env("USO_ANTES"), _env("USO_DEPOIS")),
     }
+    r = custo_da_execucao(_env("USO_ANTES"), _env("USO_DEPOIS"), _env("CUSTO_SDK", NAO_MEDIDO))
+    registro["usd"] = r["chave"] if r["rotulo"] == "execucao" else NAO_MEDIDO
+    registro["usd_chave"], registro["sdk_usd"], registro["rotulo"] = r["chave"], r["sdk"], r["rotulo"]
     sys.stdout.write(montar_registro_custo(registro))
 
 
 COMANDOS = {
     "uso-chave": cmd_uso_chave,
+    "custo": cmd_custo,
     "registro-custo": cmd_registro_custo,
     "modelo": cmd_modelo,
     "prompt": cmd_prompt,
