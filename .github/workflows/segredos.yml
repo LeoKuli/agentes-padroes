@@ -15,6 +15,13 @@ on:
         description: "Versão do gitleaks (sem o v)"
         type: string
         default: "8.30.1"
+      gitleaks-sha256:
+        description: >-
+          sha256 do gitleaks_<versão>_linux_x64.tar.gz publicado no release. O padrão é o da 8.30.1 (o "digest" do asset
+          na API de releases do GitHub, lido em 08/11/2026). Trocar a versão sem trocar este valor reprova o job: o
+          binário que não confere nunca roda.
+        type: string
+        default: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
       runner:
         description: >-
           Onde roda o job, em JSON (ex.: '"ubuntu-24.04"' ou '["self-hosted","bancada-pr"]').
@@ -39,10 +46,20 @@ jobs:
       - name: Instalar gitleaks
         env:
           GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
+          GITLEAKS_SHA256: ${{ inputs.gitleaks-sha256 }}
         run: |
           set -euo pipefail
           url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -sSfL "$url" -o "$RUNNER_TEMP/gitleaks.tgz"
+          # o download dos releases do GitHub caiu com 504 (LeoKuli/assistente, PRs 410 e 411, 08/11/2026): até 5
+          # tentativas, esperando 15, 30, 60 e 120 s, cada uma no log; a quinta falha reprova o job com a causa visível
+          espera=15
+          for tentativa in 1 2 3 4 5; do
+            echo "gitleaks: download, tentativa $tentativa de 5"
+            if curl -sSfL "$url" -o "$RUNNER_TEMP/gitleaks.tgz"; then break; fi
+            if [ "$tentativa" = 5 ]; then echo "gitleaks: 5 tentativas falharam"; exit 1; fi
+            echo "gitleaks: falhou; nova tentativa em $espera s"; sleep "$espera"; espera=$((espera * 2))
+          done
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -  # nunca pula: não conferiu, o job reprova
           tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
           "$RUNNER_TEMP/gitleaks" version
 
