@@ -10,7 +10,8 @@ Situação: PREENCHER (ativo | pausado até AAAA-MM-DD | em produção | só ref
 
 ## Onde parou
 
-PREENCHER: o último resultado concreto (PR, commit, versão no ar), com link.
+PREENCHER: o último resultado concreto (PR, commit, versão no ar), com link. O PR que traz esta atualização conta:
+escreva "o PR que traz esta atualização" em vez de deixá-lo de fora.
 
 ## Em curso
 

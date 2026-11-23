@@ -6,20 +6,24 @@ Situação: ativo
 
 ## Onde parou
 
-Kit v2 (agnóstico a modelo e a ferramenta): modelos de `docs/ESTADO.md`, ADR (MADR), glossário, ponteiros
-`CLAUDE.md`/`GEMINI.md`/`copilot-instructions.md`, `.agents/skills/`, `.mcp.json`, `.env.example`,
-`scripts/verificar` e `.devcontainer`; `scripts/adotar_padrao.py`, `scripts/conformidade.py`,
-`scripts/iniciar_projeto.py` e o workflow reutilizável `conformidade.yml`. O próprio repositório adota o kit.
+- Kit v2 no ar (#14) e marcado como **template repository**; regras do dono (44) e 10 skills de método (#15); as
+  lições da retomada sem contexto aplicadas aos modelos (o PR que traz esta atualização).
+- Adoção feita em 21 dos 22 repositórios ativos, um PR por repositório, todos mesclados com a conformidade verde. O
+  `setfisio-conteudo` ficou de fora de propósito: o importador do site recusa qualquer caminho fora de `src/`.
+- Teste sem contexto: Sonnet retomou o `rastro-estudo-pwa` e Haiku o `notas-imoveis` só com o repositório, os dois
+  com o comando único verde. As lacunas que acharam foram corrigidas nos repositórios e, as que eram do kit, nos
+  modelos.
 
 ## Em curso
 
-- Regras do dono (`docs/REGRAS-DO-DONO.md`, 44 regras) e 10 skills de método em `.agents/skills/` (7 de método puro e 3 genéricas tiradas das skills do CRM; as versões com detalhe de projeto vão para os repositórios privados crm-oralunic e crm-clinica).
-- Adoção do kit nos 22 repositórios ativos, um PR por repositório, com conteúdo real de cada projeto.
+Nada aberto neste repositório.
 
 ## Próximo passo
 
-Depois de mesclar a v2: marcar o repositório como template (`gh repo edit LeoKuli/agentes-padroes --template`) e
-seguir a adoção nos repositórios.
+- Acompanhar a primeira semana: repositório que reprovar na conformidade por ESTADO.md vencido é sinal de sessão
+  que não atualizou o estado. Ajustar `dias-maximos` só por ADR.
+- Avaliar se o `scripts/verificar` modelo deve ganhar uma varredura completa do histórico (`gitleaks git .`), hoje só
+  feita no CI.
 
 ## Bloqueios
 
