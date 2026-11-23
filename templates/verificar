@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Comando único de "pronto": prepara, testa e valida. O mesmo comando roda localmente e no CI.
+#   bash scripts/verificar             # tudo
+#   bash scripts/verificar --preparar  # só prepara o ambiente (usado pelo .devcontainer)
+# Modelo de LeoKuli/agentes-padroes. Troque cada PREENCHER pelos comandos reais do projeto; o CI de
+# conformidade reprova enquanto sobrar algum. Sem segredo e sem acesso a produção.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+etapa() { printf '\n== %s ==\n' "$1"; }
+
+etapa "preparar"
+# PREENCHER: instalar dependências (ex.: npm ci | python -m pip install -r requirements.txt | mix deps.get)
+
+if [ "${1:-}" = "--preparar" ]; then exit 0; fi
+
+etapa "testar"
+# PREENCHER: rodar a suíte (ex.: npm test | python -m pytest -q | mix test)
+
+etapa "validar"
+# Segredos e dado pessoal: o mesmo gitleaks do CI, nos commits ainda não publicados e nas mudanças locais.
+if command -v gitleaks >/dev/null 2>&1; then
+  cfg=(); [ -f .gitleaks.toml ] && cfg=(--config .gitleaks.toml)
+  base="$(git rev-parse -q --verify origin/HEAD 2>/dev/null || true)"
+  if [ -n "$base" ]; then
+    gitleaks git --no-banner --redact "${cfg[@]}" --log-opts="$base..HEAD" .
+  fi
+  gitleaks git --no-banner --redact "${cfg[@]}" --pre-commit .
+  gitleaks git --no-banner --redact "${cfg[@]}" --pre-commit --staged .
+else
+  echo "gitleaks: NÃO MEDIDO (não instalado; o CI roda)"
+fi
+# Conformidade do kit de agentes (AGENTS.md, ESTADO.md em dia, ADRs, ponteiros).
+conf="$(mktemp)"
+if curl -fsSL --max-time 20 -o "$conf" \
+    https://raw.githubusercontent.com/LeoKuli/agentes-padroes/main/scripts/conformidade.py; then
+  py=python3; command -v python3 >/dev/null 2>&1 || py=python
+  "$py" "$conf" --raiz .
+else
+  echo "conformidade: NÃO MEDIDO (sem rede; o CI roda)"
+fi
+rm -f "$conf"

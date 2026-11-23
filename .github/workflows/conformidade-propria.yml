@@ -1,0 +1,21 @@
+name: conformidade-propria
+
+# O agentes-padroes adota o kit que exige dos outros. Usa o workflow local, com o verificador da própria revisão.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  conformidade:
+    uses: ./.github/workflows/conformidade.yml
+    with:
+      dias-maximos: 30
+      ref-padroes: ${{ github.event.pull_request.head.sha || github.sha }}
+  segredos:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/segredos.yml

@@ -1,0 +1,23 @@
+name: conformidade
+
+# Kit de agentes de LeoKuli/agentes-padroes: qualquer modelo retoma o projeto só com o repositório.
+# Reprova sem AGENTS.md, com docs/ESTADO.md vencido, sem ADR ou com PREENCHER sobrando; e roda o gitleaks no PR.
+# Se o repositório já roda o gitleaks noutro workflow, apague o job "segredos" abaixo.
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformidade:
+    uses: LeoKuli/agentes-padroes/.github/workflows/conformidade.yml@main
+    with:
+      dias-maximos: 30
+  segredos:
+    if: github.event_name == 'pull_request'
+    uses: LeoKuli/agentes-padroes/.github/workflows/segredos.yml@main

@@ -1,79 +1,81 @@
-# padroes
+# agentes-padroes
 
-O contrato compartilhado que permite que **qualquer modelo de IA** contribua com os projetos do dono,
-sem acesso à VPS, à produção, a segredos ou a dados de paciente. Só pull request.
+O contrato compartilhado que deixa os repositórios do dono **agnósticos a modelo de IA e a ferramenta**: qualquer
+modelo (Claude, GPT/Codex, Gemini, Cursor, Copilot, um modelo local), em qualquer momento do projeto, consegue
+colaborar, assumir ou retomar o trabalho **só com o que está no repositório**.
 
+Instruções para agentes que trabalham **neste** repositório: [`AGENTS.md`](AGENTS.md).
 
-## A ideia em quatro linhas
+## O kit (v2)
 
-1. Um modelo forte desenha a arquitetura e escreve as **fichas de tarefa**.
-2. Qualquer modelo executa **uma ficha por pull request**.
-3. O **CI** e um revisor forte aceitam ou recusam o PR. Só o portão da VPS põe código no ar.
-4. A taxa de aceitação de cada modelo decide o **nível** de tarefa que ele pode pegar.
+| No repositório que adota | Para quê |
+|---|---|
+| `AGENTS.md` | Fonte única de instruções (padrão aberto AGENTS.md): retomar, rodar, regras, o que nunca fazer, PR aceitável |
+| `CLAUDE.md` (`@AGENTS.md`), `GEMINI.md` (`@./AGENTS.md`), `.github/copilot-instructions.md` | Ponteiros finos: cada ferramenta cai no AGENTS.md |
+| `docs/ESTADO.md` | Arquivo de retomada: onde parou, em curso, próximo passo, bloqueios, últimas decisões, data. Atualizado no fim de toda sessão, por qualquer modelo |
+| `docs/decisoes/NNNN-*.md` | ADRs no formato MADR. Tarefa que conflita com ADR aceito: o agente para e pergunta |
+| `docs/GLOSSARIO.md` | Termos do domínio e apelidos internos |
+| `.agents/skills/` | Skills próprias do projeto no formato aberto Agent Skills (`SKILL.md`); as de método ficam [aqui](.agents/skills/) |
+| `.mcp.json` | Servidores MCP do projeto, sem segredo (só `${VAR}`) |
+| `.env.example` | Nomes das variáveis de ambiente, nunca valores |
+| `scripts/verificar` (ou `make verificar`) | Comando único: prepara, testa e valida; o mesmo no CI |
+| `.devcontainer/devcontainer.json` | Ambiente reproduzível, onde fizer sentido (`--devcontainer`) |
+| `.github/workflows/conformidade.yml` | Chama a conformidade e o gitleaks reutilizáveis |
+| `.gitleaks.toml` | Regras de segredo e de dado pessoal |
 
-## O que há aqui
+Regras transversais do dono: [`docs/REGRAS-DO-DONO.md`](docs/REGRAS-DO-DONO.md).
+
+## Adotar num repositório existente
+
+```bash
+git clone https://github.com/LeoKuli/agentes-padroes.git
+python agentes-padroes/scripts/adotar_padrao.py <pasta-do-repositorio> [--nome NOME] [--devcontainer] [--simular]
+```
+
+O `adotar-padrao` **nunca sobrescreve**: o que existe fica ("mantido"), o que falta é criado. Depois:
+
+1. Trocar todo `PREENCHER` por conteúdo **real** do projeto (a conformidade reprova enquanto sobrar algum).
+2. Escrever ao menos o ADR `0001` com uma decisão real e o `docs/ESTADO.md` com a data de hoje.
+3. Se já havia um `CLAUDE.md` com conteúdo, movê-lo para o `AGENTS.md` e deixar só `@AGENTS.md`.
+4. Se o repositório já roda o gitleaks noutro workflow, apagar o job `segredos` do `conformidade.yml`.
+5. `python agentes-padroes/scripts/conformidade.py --raiz <pasta>` até dar APROVADO; depois `bash scripts/verificar`.
+
+## Projeto novo (template repository)
+
+```bash
+gh repo create LeoKuli/<novo> --private --template LeoKuli/agentes-padroes --clone
+cd <novo> && python scripts/iniciar_projeto.py --nome <novo>
+```
+
+O `iniciar-projeto` apaga tudo o que veio do agentes-padroes (menos `.git`) e monta só o kit. Skills de método e
+regras do dono continuam num lugar só (aqui) e são citadas por link.
+
+## Conformidade
+
+Workflow reutilizável [`conformidade.yml`](.github/workflows/conformidade.yml) com o verificador
+[`scripts/conformidade.py`](scripts/conformidade.py) (só biblioteca padrão). Reprova:
+
+- sem `AGENTS.md`, ou com `PREENCHER` sobrando nele, no `docs/ESTADO.md` ou no `scripts/verificar`;
+- `docs/ESTADO.md` sem `Atualizado em: AAAA-MM-DD`, com data no futuro ou vencida além de `dias-maximos` (padrão 30);
+- sem ADR em `docs/decisoes/NNNN-*.md`, ou ADR sem `status` válido no frontmatter;
+- `CLAUDE.md` sem `@AGENTS.md`; `GEMINI.md`/`copilot-instructions.md` que não citam o AGENTS.md;
+- sem comando único; `.mcp.json` inválido ou com valor literal em `env`.
+
+Roda em PR e em push na branch padrão, não por agenda (ADR 0003).
+
+## Os outros workflows reutilizáveis
 
 | Caminho | Para quê |
 |---|---|
-| `templates/AGENTS.md` | Modelo de instruções abertas para o repositório (padrão aberto AGENTS.md) |
-| `templates/FICHA-DE-TAREFA.md` | Ficha autocontida: objetivo, arquivos permitidos/proibidos, comando de aceite, teste e mutação |
-| `templates/pull_request_template.md` | Checklist do PR, referenciando a ficha |
-| `templates/CODEOWNERS.example` | Protege CI, constituição, templates de spec, testes de arquitetura e limiares de mutação |
-| `templates/.gitleaks.toml` | Regras de segredo e de dado pessoal (CPF, telefone, e-mail) |
-| `.github/workflows/segredos.yml` | Workflow reutilizável: gitleaks no diff do PR |
-| `.github/workflows/ficha.yml` | Workflow reutilizável: o PR precisa citar uma ficha (`Ficha: #123` ou `Ficha: ID`) |
-| `.github/workflows/escopo.yml` | Workflow reutilizável: confere o PR contra a ficha (Issue): arquivos permitidos/protegidos, tamanho do diff, teste presente |
-| `.github/workflows/mutacao-ficha.yml` + `scripts/mutacao_da_ficha.py` | Workflow reutilizável: aplica a "Mutação que tem de morrer" da ficha (âncora exata, 1 ocorrência), exige que o teste reprove, restaura e confere o controle positivo; só em PR de agente com `Ficha: #N` |
-| `.github/workflows/agente-openhands.yml` | Workflow reutilizável: agente OpenHands dentro do GitHub Actions, disparado pelo rótulo `agente:<modelo>` numa ficha; abre PR sem rodar o CI |
-| `templates/agente-openhands-caller.yml` | O chamador pequeno que cada repositório copia para `.github/workflows/agente.yml` |
-| `docs/OPENHANDS.md` | Pesquisa (resolver V0 removido; SDK V1 fixado), travas, passos do dono, custo |
-| `.github/workflows/teste-padroes.yml` | CI deste repositório (pytest) |
-| `templates/ISSUE_TEMPLATE/` | Formulários de Issue: `ficha.yml` (a ficha), `duvida.yml`, `config.yml` |
-| `templates/labels.json` + `scripts/aplicar-labels.sh` | Rótulos padrão (estado, nível, prioridade) e o script que os aplica a um repositório |
-| `scripts/escopo.py` + `tests/` | O verificador de escopo e seus testes |
-| `docs/REVISAO.md` | O funil de revisão: CI, escopo, gitleaks, mutação, pré-revisão barata, revisão forte |
-| `docs/COMUNICACAO.md` | Como o agente pega tarefa, pergunta, entrega e responde à revisão |
+| `.github/workflows/segredos.yml` | gitleaks no diff do PR (binário com sha256 conferido) |
+| `.github/workflows/ficha.yml`, `escopo.yml`, `mutacao-ficha.yml`, `juntar-so-teste.yml` | Fluxo de fichas: PR cita a ficha, escopo contra a ficha, mutação que tem de morrer |
+| `.github/workflows/agente-openhands.yml` | Agente dentro do Actions por rótulo. **Não ligar**: o caminho pelo OpenRouter foi encerrado em 03/11/2026 ([ADR 0002](docs/decisoes/0002-fluxo-openrouter-encerrado.md)) |
 
-## Como um repositório usa isto
-
-1. Copiar `templates/AGENTS.md` para a raiz, preencher todas as seções e fazer o `CLAUDE.md` conter
-   apenas `@AGENTS.md`.
-2. Copiar `templates/FICHA-DE-TAREFA.md` para `docs/fichas/` (uma cópia preenchida por tarefa) e
-   `templates/pull_request_template.md` para `.github/pull_request_template.md`.
-3. Copiar `templates/CODEOWNERS.example` para `.github/CODEOWNERS` e ajustar os caminhos reais.
-4. Copiar `templates/.gitleaks.toml` para a raiz do repositório.
-5. Chamar os workflows reutilizáveis num workflow do próprio repositório:
-
-```yaml
-# .github/workflows/padroes.yml
-name: padroes
-on:
-  pull_request:
-jobs:
-  segredos:
-    uses: LeoKuli/agentes-padroes/.github/workflows/segredos.yml@main
-  ficha:
-    uses: LeoKuli/agentes-padroes/.github/workflows/ficha.yml@main
-  escopo:
-    uses: LeoKuli/agentes-padroes/.github/workflows/escopo.yml@main
-    permissions:
-      contents: read
-      issues: read
-      pull-requests: read
-    # Só se o GITHUB_TOKEN não alcançar o padroes (privado): crie a credencial PADROES_TOKEN
-    # (leitura só do padroes) e acrescente aqui "secrets: inherit".
-```
-
-Para a troca por Issues: copiar `templates/ISSUE_TEMPLATE/` para `.github/ISSUE_TEMPLATE/` e rodar
-`scripts/aplicar-labels.sh LeoKuli/<repo>` uma vez. O fluxo completo está em
-[`docs/COMUNICACAO.md`](docs/COMUNICACAO.md) e [`docs/REVISAO.md`](docs/REVISAO.md).
-
-Como este repositório é privado, o repositório que chama precisa estar autorizado a usar os
-workflows dele (Settings > Actions > General > Access, em `padroes`). Isso é configuração do dono.
-
-6. Exigir esses checks, o CI do projeto e 1 revisão na `main` (proteção de branch: decisão do dono).
+Modelos do fluxo de fichas: `templates/FICHA-DE-TAREFA.md`, `templates/ISSUE_TEMPLATE/`, `templates/labels.json`,
+`templates/pull_request_template.md`, `templates/CODEOWNERS.example`. Como funcionava: [`docs/COMUNICACAO.md`](docs/COMUNICACAO.md),
+[`docs/REVISAO.md`](docs/REVISAO.md), [`docs/OPENHANDS.md`](docs/OPENHANDS.md).
 
 ## Regra de ouro
 
-Agente externo **nunca** toca VPS, produção, segredo ou dado de paciente, e **nunca** altera
-testes de arquitetura, pisos, CODEOWNERS, configuração de CI ou limiares de mutação.
+Nenhum agente commita segredo ou dado de paciente, enfraquece teste para passar, gasta dinheiro sem o sim do dono,
+ou faz `push --force`. Este repositório é **público**: nada de dado de projeto aqui.
