@@ -18,7 +18,8 @@ etapa "testar"
 # PREENCHER: rodar a suíte (ex.: npm test | python -m pytest -q | mix test)
 
 etapa "validar"
-# Segredos e dado pessoal: o mesmo gitleaks do CI, nos commits ainda não publicados e nas mudanças locais.
+# Segredos e dado pessoal: o mesmo gitleaks do CI, nos commits ainda não publicados e nas mudanças locais (o
+# histórico inteiro não é varrido aqui: o CI varre o diff de cada PR; para o histórico, `gitleaks git .`).
 if command -v gitleaks >/dev/null 2>&1; then
   cfg=(); [ -f .gitleaks.toml ] && cfg=(--config .gitleaks.toml)
   base="$(git rev-parse -q --verify origin/HEAD 2>/dev/null || true)"
