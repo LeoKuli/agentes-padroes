@@ -13,7 +13,7 @@ Kit v2 (agnóstico a modelo e a ferramenta): modelos de `docs/ESTADO.md`, ADR (M
 
 ## Em curso
 
-- Regras do dono (`docs/REGRAS-DO-DONO.md`) e as skills de método em `.agents/skills/`, em PR separado.
+- Regras do dono (`docs/REGRAS-DO-DONO.md`, 44 regras) e 10 skills de método em `.agents/skills/` (7 de método puro e 3 genéricas tiradas das skills do CRM; as versões com detalhe de projeto vão para os repositórios privados crm-oralunic e crm-clinica).
 - Adoção do kit nos 22 repositórios ativos, um PR por repositório, com conteúdo real de cada projeto.
 
 ## Próximo passo
