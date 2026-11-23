@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Comando único de "pronto" do agentes-padroes: prepara, testa e valida. O mesmo roda no CI.
+#   bash scripts/verificar             # tudo
+#   bash scripts/verificar --preparar  # só instala as dependências de teste
+set -euo pipefail
+cd "$(dirname "$0")/.."
+py=python3; command -v python3 >/dev/null 2>&1 || py=python
+
+printf '\n== preparar ==\n'
+"$py" -m pip install --disable-pip-version-check -q pytest pyyaml
+if [ "${1:-}" = "--preparar" ]; then exit 0; fi
+
+printf '\n== testar ==\n'
+"$py" -m pytest -q
+
+printf '\n== validar ==\n'
+bash -n scripts/aplicar-labels.sh
+bash -n templates/verificar
+"$py" scripts/conformidade.py --raiz . --dias 30
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks dir . --no-banner --redact --config templates/.gitleaks.toml
+else
+  echo "gitleaks: NÃO MEDIDO (não instalado; o CI roda)"
+fi

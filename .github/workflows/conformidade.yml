@@ -1,0 +1,51 @@
+name: conformidade
+
+# Workflow reutilizável: o repositório que chama tem o kit de agentes em dia?
+# Reprova sem AGENTS.md, com docs/ESTADO.md vencido além de N dias, sem ADR, com PREENCHER sobrando,
+# CLAUDE.md sem @AGENTS.md ou .mcp.json com segredo literal. Regras em scripts/conformidade.py.
+# Uso:
+#   jobs:
+#     conformidade:
+#       uses: LeoKuli/agentes-padroes/.github/workflows/conformidade.yml@main
+#       with:
+#         dias-maximos: 30
+
+on:
+  workflow_call:
+    inputs:
+      dias-maximos:
+        description: "Idade máxima, em dias, do 'Atualizado em' do docs/ESTADO.md"
+        type: number
+        default: 30
+      ref-padroes:
+        description: "Ref de LeoKuli/agentes-padroes de onde vem o verificador"
+        type: string
+        default: main
+      runner:
+        description: "Onde roda o job, em JSON (ex.: '\"ubuntu-24.04\"')"
+        type: string
+        default: '"ubuntu-24.04"'
+
+permissions:
+  contents: read
+
+jobs:
+  conformidade:
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout do verificador (agentes-padroes)
+        uses: actions/checkout@v4
+        with:
+          repository: LeoKuli/agentes-padroes
+          ref: ${{ inputs.ref-padroes }}
+          path: .agentes-padroes
+          persist-credentials: false
+      - name: Conferir o kit
+        env:
+          DIAS: ${{ inputs.dias-maximos }}
+        run: python3 .agentes-padroes/scripts/conformidade.py --raiz . --dias "$DIAS"
